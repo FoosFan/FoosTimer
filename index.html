@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foosball Timer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #status {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        button {
+            font-size: 18px;
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #startBtn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        #resetBtn {
+            background-color: #f44336;
+            color: white;
+        }
+        #timer {
+            font-size: 60px;
+            font-weight: bold;
+            color: #333;
+        }
+        #modeToggle, #bufferToggle, #lanesToggle, #voiceToggle {
+            font-size: 16px;
+            margin: 10px;
+        }
+        select {
+            font-size: 16px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Foosball Timer</div>
+    <div id="timer">Press Start</div>
+    <label id="modeToggle">
+        <input type="checkbox" id="passModeCheckbox"> Enable Pass Timer Mode
+    </label>
+    <label id="bufferToggle">
+        Buffer Time (seconds):
+        <select id="bufferSelect">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+        </select>
+    </label>
+    <label id="lanesToggle">
+        Shot Lanes:
+        <select id="shotLanesSelect">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+        </select>
+    </label>
+    <label id="voiceToggle">
+        English Voice:
+        <select id="voiceSelect">
+            <!-- Voices will be populated dynamically -->
+        </select>
+    </label>
+    <button id="startBtn">Start</button>
+    <button id="resetBtn" disabled>Reset</button>
+
+    <script>
+        const allShotNumbers = ['one', 'two', 'three', 'four', 'five'];
+        const passOptions = ['wall', 'lane'];
+        let pendingTimers = []; // Array to hold all interval/timeout IDs
+        let isRunning = false;
+        const maxShotCountdown = 15; // Max time for shot visual countdown
+        const minShotDelay = 5; // Min seconds to wait before possible shot call
+        const maxPassCountdown = 10; // Max time for pass visual countdown
+        const minPassDelay = 4; // Min seconds for pass call
+        const statusEl = document.getElementById('status');
+        const timerEl = document.getElementById('timer');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const passModeCheckbox = document.getElementById('passModeCheckbox');
+        const bufferSelect = document.getElementById('bufferSelect');
+        const shotLanesSelect = document.getElementById('shotLanesSelect');
+        const voiceSelect = document.getElementById('voiceSelect');
+
+        // Check if speech is supported
+        if (!('speechSynthesis' in window)) {
+            alert('Your browser does not support text-to-speech. Try Chrome or another browser.');
+        }
+
+        // Load and populate English voices
+        let voices = [];
+        function loadVoices() {
+            voices = speechSynthesis.getVoices().filter(voice => voice.lang.startsWith('en-'));
+            voiceSelect.innerHTML = ''; // Clear options
+            if (voices.length === 0) {
+                const option = document.createElement('option');
+                option.textContent = 'No English voices available';
+                voiceSelect.appendChild(option);
+            } else {
+                voices.forEach((voice, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    voiceSelect.appendChild(option);
+                });
+                // Default to Samantha (en-US) if available, else first en-US, else first
+                const samanthaIndex = voices.findIndex(voice => voice.name === 'Samantha' && voice.lang === 'en-US');
+                const defaultIndex = samanthaIndex !== -1 ? samanthaIndex : voices.findIndex(voice => voice.lang === 'en-US');
+                voiceSelect.value = defaultIndex !== -1 ? defaultIndex : 0;
+            }
+        }
+
+        speechSynthesis.onvoiceschanged = loadVoices;
+        loadVoices(); // Initial load
+
+        // Re-select default voice when pass mode is checked
+        passModeCheckbox.addEventListener('change', () => {
+            if (passModeCheckbox.checked) {
+                loadVoices(); // Re-load and set default
+            }
+        });
+
+        function speak(text) {
+            if ('speechSynthesis' in window) {
+                // Pause recognition if active
+                let wasListening = false;
+                if (recognition && !recognition.stopped) {
+                    wasListening = true;
+                    recognition.stop();
+                }
+
+                speechSynthesis.cancel(); // Cancel previous
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.volume = 1;
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                // Use selected voice
+                const selectedIndex = parseInt(voiceSelect.value, 10);
+                if (!isNaN(selectedIndex) && voices[selectedIndex]) {
+                    utterance.voice = voices[selectedIndex];
+                }
+                // Resume recognition after speak ends
+                utterance.onend = () => {
+                    if (wasListening && recognition && !recognition.stopped) {
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.log('Restart recognition error after speak:', e);
+                        }
+                    }
+                };
+                speechSynthesis.speak(utterance);
+            }
+        }
+
+        // Handle visibility for resuming speech
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && 'speechSynthesis' in window) {
+                speechSynthesis.resume();
+            }
+        });
+
+        function startCycle() {
+            if (passModeCheckbox.checked) {
+                startPass();
+            } else {
+                startShot();
+            }
+        }
+
+        function startPass() {
+            statusEl.textContent = 'Pass Set!';
+
+            // Speak "set"
+            speak('set');
+
+            // Choose random time between 4 and 10 seconds for the pass call
+            const passDelay = Math.floor(Math.random() * (maxPassCountdown - minPassDelay + 1)) + minPassDelay;
+
+            // Start visual 10s countdown
+            let remainingSeconds = maxPassCountdown;
+            timerEl.textContent = remainingSeconds;
+
+            const countdownInterval = setInterval(() => {
+                remainingSeconds -= 1;
+                timerEl.textContent = remainingSeconds;
+                if (remainingSeconds < 0) {
+                    clearInterval(countdownInterval);
+                    pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
+                }
+            }, 1000);
+            pendingTimers.push(countdownInterval);
+
+            // Set timeout for the random pass call
+            const passTimeout = setTimeout(() => {
+                clearInterval(countdownInterval);
+                pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
+                pendingTimers = pendingTimers.filter(id => id !== passTimeout);
+                // Choose random option and speak
+                const randomIndex = Math.floor(Math.random() * passOptions.length);
+                const passCall = passOptions[randomIndex];
+                statusEl.textContent = `Pass: ${passCall}!`;
+                speak(passCall);
+                // Wait 1 second then start shot if still running
+                const delayToShot = setTimeout(() => {
+                    pendingTimers = pendingTimers.filter(id => id !== delayToShot);
+                    if (isRunning) {
+                        startShot();
+                    }
+                }, 1000);
+                pendingTimers.push(delayToShot);
+            }, passDelay * 1000);
+            pendingTimers.push(passTimeout);
+        }
+
+        function startShot() {
+            statusEl.textContent = 'Shot Set!';
+
+            // Speak "set"
+            speak('set');
+
+            // Choose random time between 5 and 15 seconds for the shot
+            const shotDelay = Math.floor(Math.random() * (maxShotCountdown - minShotDelay + 1)) + minShotDelay;
+
+            // Start visual 15s countdown
+            let remainingSeconds = maxShotCountdown;
+            timerEl.textContent = remainingSeconds;
+
+            const countdownInterval = setInterval(() => {
+                remainingSeconds -= 1;
+                timerEl.textContent = remainingSeconds;
+                if (remainingSeconds < 0) {
+                    clearInterval(countdownInterval);
+                    pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
+                }
+            }, 1000);
+            pendingTimers.push(countdownInterval);
+
+            // Set timeout for the random shot
+            const shotTimeout = setTimeout(() => {
+                clearInterval(countdownInterval);
+                pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
+                pendingTimers = pendingTimers.filter(id => id !== shotTimeout);
+                // Choose random number and speak (based on selected lanes)
+                const lanes = parseInt(shotLanesSelect.value, 10);
+                const randomIndex = Math.floor(Math.random() * lanes);
+                const shot = allShotNumbers[randomIndex];
+                statusEl.textContent = `Shoot ${shot}!`;
+                speak(shot);
+                // Start buffer if still running
+                if (isRunning) {
+                    startBuffer();
+                }
+            }, shotDelay * 1000);
+            pendingTimers.push(shotTimeout);
+        }
+
+        function startBuffer() {
+            const bufferTime = parseInt(bufferSelect.value, 10); // Get user-selected buffer time
+            let bufferSeconds = bufferTime;
+            statusEl.textContent = 'Buffer';
+            timerEl.textContent = bufferSeconds;
+
+            const bufferInterval = setInterval(() => {
+                bufferSeconds -= 1;
+                timerEl.textContent = bufferSeconds;
+                if (bufferSeconds <= 0) {
+                    clearInterval(bufferInterval);
+                    pendingTimers = pendingTimers.filter(id => id !== bufferInterval);
+                    if (isRunning) {
+                        startCycle(); // Loop back, checking mode
+                    }
+                }
+            }, 1000);
+            pendingTimers.push(bufferInterval);
+        }
+
+        function resetCycle() {
+            isRunning = false;
+            // Clear all pending timers immediately
+            while (pendingTimers.length > 0) {
+                const id = pendingTimers.pop();
+                clearInterval(id);
+                clearTimeout(id);
+            }
+            speechSynthesis.cancel(); // Stop any ongoing speech
+            startBtn.disabled = false;
+            resetBtn.disabled = true;
+            statusEl.textContent = 'Foosball Timer';
+            timerEl.textContent = 'Press Start';
+        }
+
+        // Voice command setup
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+                if (transcript === 'start' && !isRunning) {
+                    startBtn.click(); // Simulate start
+                } else if (transcript === 'reset') {
+                    resetBtn.click(); // Simulate reset
+                }
+            };
+
+            recognition.onend = () => {
+                // Restart for continuous listening
+                if (!recognition.stopped) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.log('Voice recognition restart error:', e);
+                    }
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.log('Voice recognition error:', event.error);
+                if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                    alert('Microphone permission denied. Voice commands disabled.');
+                    recognition.stopped = true;
+                }
+            };
+
+            // Start listening (may prompt for permission)
+            try {
+                recognition.start();
+            } catch (e) {
+                console.log('Initial voice recognition start error:', e);
+            }
+        } else {
+            console.log('SpeechRecognition not supported in this browser.');
+        }
+
+        startBtn.addEventListener('click', () => {
+            isRunning = true;
+            pendingTimers = []; // Reset on new start
+            startBtn.disabled = true;
+            resetBtn.disabled = false;
+            startCycle();
+        });
+        resetBtn.addEventListener('click', resetCycle);
+    </script>
+</body>
+</html>
