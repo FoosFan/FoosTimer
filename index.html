@@ -95,6 +95,7 @@
         const passOptions = ['wall', 'lane'];
         let pendingTimers = []; // Array to hold all interval/timeout IDs
         let isRunning = false;
+        let wakeLock = null; // For Screen Wake Lock
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
@@ -179,12 +180,39 @@
             }
         }
 
-        // Handle visibility for resuming speech
-        document.addEventListener('visibilitychange', () => {
+        // Handle visibility for resuming speech and wake lock
+        document.addEventListener('visibilitychange', async () => {
             if (!document.hidden && 'speechSynthesis' in window) {
                 speechSynthesis.resume();
             }
+            if (!document.hidden && isRunning && 'wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (e) {
+                    console.log('Wake lock request error:', e);
+                }
+            }
         });
+
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (e) {
+                    console.log('Wake lock request error:', e);
+                }
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock) {
+                wakeLock.release().then(() => {
+                    wakeLock = null;
+                }).catch(e => {
+                    console.log('Wake lock release error:', e);
+                });
+            }
+        }
 
         function startCycle() {
             if (passModeCheckbox.checked) {
@@ -310,6 +338,7 @@
                 clearTimeout(id);
             }
             speechSynthesis.cancel(); // Stop any ongoing speech
+            releaseWakeLock(); // Release screen wake lock
             startBtn.disabled = false;
             resetBtn.disabled = true;
             statusEl.textContent = 'Foosball Timer';
@@ -363,11 +392,12 @@
             console.log('SpeechRecognition not supported in this browser.');
         }
 
-        startBtn.addEventListener('click', () => {
+        startBtn.addEventListener('click', async () => {
             isRunning = true;
             pendingTimers = []; // Reset on new start
             startBtn.disabled = true;
             resetBtn.disabled = false;
+            await requestWakeLock(); // Request screen wake lock
             startCycle();
         });
         resetBtn.addEventListener('click', resetCycle);
