@@ -35,6 +35,10 @@
             background-color: #f44336;
             color: white;
         }
+        #testSpeechBtn {
+            background-color: #2196F3;
+            color: white;
+        }
         #timer {
             font-size: 60px;
             font-weight: bold;
@@ -89,6 +93,7 @@
     </label>
     <button id="startBtn">Start</button>
     <button id="resetBtn" disabled>Reset</button>
+    <button id="testSpeechBtn">Test Speech</button>
 
     <script>
         const allShotNumbers = ['one', 'two', 'three', 'four', 'five'];
@@ -104,6 +109,7 @@
         const timerEl = document.getElementById('timer');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const testSpeechBtn = document.getElementById('testSpeechBtn');
         const passModeCheckbox = document.getElementById('passModeCheckbox');
         const bufferSelect = document.getElementById('bufferSelect');
         const shotLanesSelect = document.getElementById('shotLanesSelect');
@@ -137,7 +143,10 @@
             }
         }
 
-        speechSynthesis.onvoiceschanged = loadVoices;
+        speechSynthesis.onvoiceschanged = () => {
+            loadVoices();
+            console.log('Voices loaded:', voices.map(v => `${v.name} (${v.lang})`));
+        };
         loadVoices(); // Initial load
 
         // Re-select default voice when pass mode is checked
@@ -165,8 +174,13 @@
                 const selectedIndex = parseInt(voiceSelect.value, 10);
                 if (!isNaN(selectedIndex) && voices[selectedIndex]) {
                     utterance.voice = voices[selectedIndex];
+                    console.log('Speaking with voice:', voices[selectedIndex].name);
+                } else {
+                    console.log('No valid voice selected, using default');
                 }
-                // Resume recognition after speak ends
+                utterance.onerror = (e) => {
+                    console.error('Speech synthesis error:', e);
+                };
                 utterance.onend = () => {
                     if (wasListening && recognition && !recognition.stopped) {
                         try {
@@ -179,6 +193,11 @@
                 speechSynthesis.speak(utterance);
             }
         }
+
+        // Test speech button
+        testSpeechBtn.addEventListener('click', () => {
+            speak('test');
+        });
 
         // Handle visibility for resuming speech and wake lock
         document.addEventListener('visibilitychange', async () => {
