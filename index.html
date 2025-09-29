@@ -44,13 +44,16 @@
             font-weight: bold;
             color: #333;
         }
-        #modeToggle, #bufferToggle, #lanesToggle, #voiceToggle {
+        #modeToggle, #bufferToggle, #lanesToggle, #voiceToggle, #passToggle {
             font-size: 16px;
             margin: 10px;
         }
         select {
             font-size: 16px;
             padding: 5px;
+        }
+        .pass-option {
+            margin-right: 10px;
         }
     </style>
 </head>
@@ -60,6 +63,13 @@
     <label id="modeToggle">
         <input type="checkbox" id="passModeCheckbox"> Enable Pass Timer Mode
     </label>
+    <div id="passToggle" style="display: none;">
+        Pass Options:
+        <label class="pass-option"><input type="checkbox" id="passWall" checked> Wall</label>
+        <label class="pass-option"><input type="checkbox" id="passLane" checked> Lane</label>
+        <label class="pass-option"><input type="checkbox" id="passMiddle" checked> Middle</label>
+        <label class="pass-option"><input type="checkbox" id="passShoot" checked> Shoot</label>
+    </div>
     <label id="bufferToggle">
         Buffer Time (seconds):
         <select id="bufferSelect">
@@ -97,7 +107,7 @@
 
     <script>
         const allShotNumbers = ['one', 'two', 'three', 'four', 'five'];
-        const passOptions = ['wall', 'lane'];
+        const allPassOptions = ['wall', 'lane', 'middle', 'shoot'];
         let pendingTimers = []; // Array to hold all interval/timeout IDs
         let isRunning = false;
         let wakeLock = null; // For Screen Wake Lock
@@ -111,14 +121,42 @@
         const resetBtn = document.getElementById('resetBtn');
         const testSpeechBtn = document.getElementById('testSpeechBtn');
         const passModeCheckbox = document.getElementById('passModeCheckbox');
+        const passWall = document.getElementById('passWall');
+        const passLane = document.getElementById('passLane');
+        const passMiddle = document.getElementById('passMiddle');
+        const passShoot = document.getElementById('passShoot');
         const bufferSelect = document.getElementById('bufferSelect');
         const shotLanesSelect = document.getElementById('shotLanesSelect');
         const voiceSelect = document.getElementById('voiceSelect');
+        const passToggle = document.getElementById('passToggle');
 
         // Check if speech is supported
         if (!('speechSynthesis' in window)) {
             alert('Your browser does not support text-to-speech. Try Chrome or another browser.');
         }
+
+        // Show/hide pass options and enforce at least one selection
+        passModeCheckbox.addEventListener('change', () => {
+            passToggle.style.display = passModeCheckbox.checked ? 'block' : 'none';
+            if (passModeCheckbox.checked) {
+                loadVoices(); // Re-load and set default voice
+                validatePassOptions();
+            }
+        });
+
+        function validatePassOptions() {
+            const checkboxes = [passWall, passLane, passMiddle, passShoot];
+            const checkedCount = checkboxes.filter(cb => cb.checked).length;
+            if (checkedCount === 0) {
+                alert('Please select at least one pass option.');
+                passWall.checked = true; // Default to Wall if none selected
+            }
+        }
+
+        // Enforce at least one pass option on change
+        [passWall, passLane, passMiddle, passShoot].forEach(checkbox => {
+            checkbox.addEventListener('change', validatePassOptions);
+        });
 
         // Load and populate English voices
         let voices = [];
@@ -129,6 +167,7 @@
                 const option = document.createElement('option');
                 option.textContent = 'No English voices available';
                 voiceSelect.appendChild(option);
+                console.log('No English voices available');
             } else {
                 voices.forEach((voice, index) => {
                     const option = document.createElement('option');
@@ -140,21 +179,14 @@
                 const samanthaIndex = voices.findIndex(voice => voice.name === 'Samantha' && voice.lang === 'en-US');
                 const defaultIndex = samanthaIndex !== -1 ? samanthaIndex : voices.findIndex(voice => voice.lang === 'en-US');
                 voiceSelect.value = defaultIndex !== -1 ? defaultIndex : 0;
+                console.log('Voices loaded:', voices.map(v => `${v.name} (${v.lang})`));
             }
         }
 
         speechSynthesis.onvoiceschanged = () => {
             loadVoices();
-            console.log('Voices loaded:', voices.map(v => `${v.name} (${v.lang})`));
         };
         loadVoices(); // Initial load
-
-        // Re-select default voice when pass mode is checked
-        passModeCheckbox.addEventListener('change', () => {
-            if (passModeCheckbox.checked) {
-                loadVoices(); // Re-load and set default
-            }
-        });
 
         function speak(text) {
             if ('speechSynthesis' in window) {
@@ -162,7 +194,11 @@
                 let wasListening = false;
                 if (recognition && !recognition.stopped) {
                     wasListening = true;
-                    recognition.stop();
+                    try {
+                        recognition.stop();
+                    } catch (e) {
+                        console.log('Error stopping recognition:', e);
+                    }
                 }
 
                 speechSynthesis.cancel(); // Cancel previous
@@ -174,14 +210,23 @@
                 const selectedIndex = parseInt(voiceSelect.value, 10);
                 if (!isNaN(selectedIndex) && voices[selectedIndex]) {
                     utterance.voice = voices[selectedIndex];
-                    console.log('Speaking with voice:', voices[selectedIndex].name);
+                    console.log(`Speaking "${text}" with voice: ${voices[selectedIndex].name}`);
                 } else {
-                    console.log('No valid voice selected, using default');
+                    console.log(`No valid voice selected for "${text}", using default`);
                 }
                 utterance.onerror = (e) => {
                     console.error('Speech synthesis error:', e);
+                    // Attempt to resume recognition on error
+                    if (wasListening && recognition && !recognition.stopped) {
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.log('Restart recognition error after speech error:', e);
+                        }
+                    }
                 };
                 utterance.onend = () => {
+                    console.log(`Finished speaking "${text}"`);
                     if (wasListening && recognition && !recognition.stopped) {
                         try {
                             recognition.start();
@@ -190,7 +235,13 @@
                         }
                     }
                 };
-                speechSynthesis.speak(utterance);
+                try {
+                    speechSynthesis.speak(utterance);
+                } catch (e) {
+                    console.error('Error initiating speech:', e);
+                }
+            } else {
+                console.log('Speech synthesis not supported');
             }
         }
 
@@ -203,10 +254,12 @@
         document.addEventListener('visibilitychange', async () => {
             if (!document.hidden && 'speechSynthesis' in window) {
                 speechSynthesis.resume();
+                console.log('Speech synthesis resumed due to visibility change');
             }
             if (!document.hidden && isRunning && 'wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake lock re-acquired');
                 } catch (e) {
                     console.log('Wake lock request error:', e);
                 }
@@ -217,6 +270,7 @@
             if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake lock acquired');
                 } catch (e) {
                     console.log('Wake lock request error:', e);
                 }
@@ -227,6 +281,7 @@
             if (wakeLock) {
                 wakeLock.release().then(() => {
                     wakeLock = null;
+                    console.log('Wake lock released');
                 }).catch(e => {
                     console.log('Wake lock release error:', e);
                 });
@@ -243,8 +298,6 @@
 
         function startPass() {
             statusEl.textContent = 'Pass Set!';
-
-            // Speak "set"
             speak('set');
 
             // Choose random time between 4 and 10 seconds for the pass call
@@ -269,27 +322,40 @@
                 clearInterval(countdownInterval);
                 pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
                 pendingTimers = pendingTimers.filter(id => id !== passTimeout);
-                // Choose random option and speak
-                const randomIndex = Math.floor(Math.random() * passOptions.length);
-                const passCall = passOptions[randomIndex];
+                // Choose random option from selected passes
+                const selectedPassOptions = allPassOptions.filter((_, index) => {
+                    return [passWall, passLane, passMiddle, passShoot][index].checked;
+                });
+                const randomIndex = Math.floor(Math.random() * selectedPassOptions.length);
+                const passCall = selectedPassOptions[randomIndex];
                 statusEl.textContent = `Pass: ${passCall}!`;
                 speak(passCall);
-                // Wait 1 second then start shot if still running
-                const delayToShot = setTimeout(() => {
-                    pendingTimers = pendingTimers.filter(id => id !== delayToShot);
-                    if (isRunning) {
-                        startShot();
-                    }
-                }, 1000);
-                pendingTimers.push(delayToShot);
+                // If pass is "shoot", skip to buffer; otherwise, go to shot after 1s
+                if (passCall === 'shoot') {
+                    // Wait 1 second then start buffer if still running
+                    const delayToBuffer = setTimeout(() => {
+                        pendingTimers = pendingTimers.filter(id => id !== delayToBuffer);
+                        if (isRunning) {
+                            startBuffer();
+                        }
+                    }, 1000);
+                    pendingTimers.push(delayToBuffer);
+                } else {
+                    // Wait 1 second then start shot if still running
+                    const delayToShot = setTimeout(() => {
+                        pendingTimers = pendingTimers.filter(id => id !== delayToShot);
+                        if (isRunning) {
+                            startShot();
+                        }
+                    }, 1000);
+                    pendingTimers.push(delayToShot);
+                }
             }, passDelay * 1000);
             pendingTimers.push(passTimeout);
         }
 
         function startShot() {
             statusEl.textContent = 'Shot Set!';
-
-            // Speak "set"
             speak('set');
 
             // Choose random time between 5 and 15 seconds for the shot
@@ -375,6 +441,7 @@
 
             recognition.onresult = (event) => {
                 const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+                console.log('Heard voice command:', transcript);
                 if (transcript === 'start' && !isRunning) {
                     startBtn.click(); // Simulate start
                 } else if (transcript === 'reset') {
@@ -387,6 +454,7 @@
                 if (!recognition.stopped) {
                     try {
                         recognition.start();
+                        console.log('Speech recognition restarted');
                     } catch (e) {
                         console.log('Voice recognition restart error:', e);
                     }
@@ -404,6 +472,7 @@
             // Start listening (may prompt for permission)
             try {
                 recognition.start();
+                console.log('Speech recognition started');
             } catch (e) {
                 console.log('Initial voice recognition start error:', e);
             }
@@ -420,6 +489,10 @@
             startCycle();
         });
         resetBtn.addEventListener('click', resetCycle);
+        // Test speech button
+        testSpeechBtn.addEventListener('click', () => {
+            speak('test');
+        });
     </script>
 </body>
 </html>
