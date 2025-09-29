@@ -52,9 +52,6 @@
             font-size: 16px;
             padding: 5px;
         }
-        .pass-option {
-            margin-right: 10px;
-        }
     </style>
 </head>
 <body>
@@ -63,13 +60,15 @@
     <label id="modeToggle">
         <input type="checkbox" id="passModeCheckbox"> Enable Pass Timer Mode
     </label>
-    <div id="passToggle" style="display: none;">
-        Pass Options:
-        <label class="pass-option"><input type="checkbox" id="passWall" checked> Wall</label>
-        <label class="pass-option"><input type="checkbox" id="passLane" checked> Lane</label>
-        <label class="pass-option"><input type="checkbox" id="passMiddle" checked> Middle</label>
-        <label class="pass-option"><input type="checkbox" id="passShoot" checked> Shoot</label>
-    </div>
+    <label id="passToggle" style="display: none;">
+        Pass Options (Select at least 1):
+        <select id="passSelect" multiple size="4">
+            <option value="wall" selected>Wall</option>
+            <option value="lane" selected>Lane</option>
+            <option value="middle" selected>Middle</option>
+            <option value="shoot" selected>Shoot</option>
+        </select>
+    </label>
     <label id="bufferToggle">
         Buffer Time (seconds):
         <select id="bufferSelect">
@@ -121,10 +120,7 @@
         const resetBtn = document.getElementById('resetBtn');
         const testSpeechBtn = document.getElementById('testSpeechBtn');
         const passModeCheckbox = document.getElementById('passModeCheckbox');
-        const passWall = document.getElementById('passWall');
-        const passLane = document.getElementById('passLane');
-        const passMiddle = document.getElementById('passMiddle');
-        const passShoot = document.getElementById('passShoot');
+        const passSelect = document.getElementById('passSelect');
         const bufferSelect = document.getElementById('bufferSelect');
         const shotLanesSelect = document.getElementById('shotLanesSelect');
         const voiceSelect = document.getElementById('voiceSelect');
@@ -145,18 +141,15 @@
         });
 
         function validatePassOptions() {
-            const checkboxes = [passWall, passLane, passMiddle, passShoot];
-            const checkedCount = checkboxes.filter(cb => cb.checked).length;
-            if (checkedCount === 0) {
+            const selectedOptions = Array.from(passSelect.selectedOptions).map(option => option.value);
+            if (selectedOptions.length === 0) {
                 alert('Please select at least one pass option.');
-                passWall.checked = true; // Default to Wall if none selected
+                passSelect.options[0].selected = true; // Default to Wall
             }
         }
 
         // Enforce at least one pass option on change
-        [passWall, passLane, passMiddle, passShoot].forEach(checkbox => {
-            checkbox.addEventListener('change', validatePassOptions);
-        });
+        passSelect.addEventListener('change', validatePassOptions);
 
         // Load and populate English voices
         let voices = [];
@@ -323,9 +316,7 @@
                 pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
                 pendingTimers = pendingTimers.filter(id => id !== passTimeout);
                 // Choose random option from selected passes
-                const selectedPassOptions = allPassOptions.filter((_, index) => {
-                    return [passWall, passLane, passMiddle, passShoot][index].checked;
-                });
+                const selectedPassOptions = Array.from(passSelect.selectedOptions).map(option => option.value);
                 const randomIndex = Math.floor(Math.random() * selectedPassOptions.length);
                 const passCall = selectedPassOptions[randomIndex];
                 statusEl.textContent = `Pass: ${passCall}!`;
@@ -489,7 +480,6 @@
             startCycle();
         });
         resetBtn.addEventListener('click', resetCycle);
-        // Test speech button
         testSpeechBtn.addEventListener('click', () => {
             speak('test');
         });
