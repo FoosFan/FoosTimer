@@ -69,6 +69,16 @@
             <option value="shoot" selected>Shoot</option>
         </select>
     </label>
+    <label id="lanesToggle">
+        Shot Lanes (Select at least 1):
+        <select id="shotLanesSelect" multiple size="5">
+            <option value="1" selected>1</option>
+            <option value="2" selected>2</option>
+            <option value="3" selected>3</option>
+            <option value="4" selected>4</option>
+            <option value="5" selected>5</option>
+        </select>
+    </label>
     <label id="bufferToggle">
         Buffer Time (seconds):
         <select id="bufferSelect">
@@ -84,16 +94,6 @@
             <option value="10">10</option>
         </select>
     </label>
-    <label id="lanesToggle">
-        Shot Lanes:
-        <select id="shotLanesSelect">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5" selected>5</option>
-        </select>
-    </label>
     <label id="voiceToggle">
         English Voice:
         <select id="voiceSelect">
@@ -105,7 +105,7 @@
     <button id="testSpeechBtn">Test Speech</button>
 
     <script>
-        const allShotNumbers = ['one', 'two', 'three', 'four', 'five'];
+        const allShotNumbers = ['1', '2', '3', '4', '5'];
         const allPassOptions = ['wall', 'lane', 'middle', 'shoot'];
         let pendingTimers = []; // Array to hold all interval/timeout IDs
         let isRunning = false;
@@ -121,8 +121,8 @@
         const testSpeechBtn = document.getElementById('testSpeechBtn');
         const passModeCheckbox = document.getElementById('passModeCheckbox');
         const passSelect = document.getElementById('passSelect');
-        const bufferSelect = document.getElementById('bufferSelect');
         const shotLanesSelect = document.getElementById('shotLanesSelect');
+        const bufferSelect = document.getElementById('bufferSelect');
         const voiceSelect = document.getElementById('voiceSelect');
         const passToggle = document.getElementById('passToggle');
 
@@ -148,8 +148,17 @@
             }
         }
 
-        // Enforce at least one pass option on change
+        function validateShotLanes() {
+            const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
+            if (selectedLanes.length === 0) {
+                alert('Please select at least one shot lane.');
+                shotLanesSelect.options[0].selected = true; // Default to 1
+            }
+        }
+
+        // Enforce at least one option for pass and shot lanes
         passSelect.addEventListener('change', validatePassOptions);
+        shotLanesSelect.addEventListener('change', validateShotLanes);
 
         // Load and populate English voices
         let voices = [];
@@ -371,10 +380,10 @@
                 clearInterval(countdownInterval);
                 pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
                 pendingTimers = pendingTimers.filter(id => id !== shotTimeout);
-                // Choose random number and speak (based on selected lanes)
-                const lanes = parseInt(shotLanesSelect.value, 10);
-                const randomIndex = Math.floor(Math.random() * lanes);
-                const shot = allShotNumbers[randomIndex];
+                // Choose random number from selected lanes
+                const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
+                const randomIndex = Math.floor(Math.random() * selectedLanes.length);
+                const shot = selectedLanes[randomIndex];
                 statusEl.textContent = `Shoot ${shot}!`;
                 speak(shot);
                 // Start buffer if still running
