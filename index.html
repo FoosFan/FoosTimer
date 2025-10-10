@@ -60,6 +60,10 @@
             margin-top: 50px;
             font-size: 16px;
             text-align: center;
+            width: 100%;
+        }
+        .stats-section {
+            margin-bottom: 20px;
         }
     </style>
 </head>
@@ -116,8 +120,14 @@
 
     <div id="stats">
         <h3>Statistics</h3>
-        <p>Pass Makes: 0 | Pass Misses: 0 | Pass Accuracy: 0%</p>
-        <p>Shot Makes: 0 | Shot Misses: 0 | Shot Accuracy: 0%</p>
+        <div class="stats-section">
+            <h4>Pass Statistics</h4>
+            <p id="passStats">No pass stats yet</p>
+        </div>
+        <div class="stats-section">
+            <h4>Shot Statistics</h4>
+            <p id="shotStats">No shot stats yet</p>
+        </div>
     </div>
 
     <script>
@@ -126,12 +136,15 @@
         let pendingTimers = []; // Array to hold all interval/timeout IDs
         let isRunning = false;
         let wakeLock = null; // For Screen Wake Lock
+        let passStats = {}; // {date: {wall: {makes: 0, misses: 0}, ...}}
+        let shotStats = {}; // {date: {1: {makes: 0, misses: 0}, ...}}
+        let currentPhase = null; // 'pass' or 'shot' to track current timer
+        let lastPassCall = null; // To track if pass was 'shoot'
+        let lastCall = null; // To track the last pass or shot call for stats
         let passMakes = 0;
         let passMisses = 0;
         let shotMakes = 0;
         let shotMisses = 0;
-        let currentPhase = null; // 'pass' or 'shot'
-        let lastPassCall = null; // To track if pass was 'shoot'
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
@@ -139,7 +152,8 @@
         const statusEl = document.getElementById('status');
         const timerEl = document.getElementById('timer');
         const countsEl = document.getElementById('counts');
-        const statsEl = document.getElementById('stats');
+        const passStatsEl = document.getElementById('passStats');
+        const shotStatsEl = document.getElementById('shotStats');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const testSpeechBtn = document.getElementById('testSpeechBtn');
@@ -149,6 +163,115 @@
         const bufferSelect = document.getElementById('bufferSelect');
         const voiceSelect = document.getElementById('voiceSelect');
         const passToggle = document.getElementById('passToggle');
+
+        // Load saved settings and stats from localStorage
+        function loadSettings() {
+            const savedPassMode = localStorage.getItem('passMode');
+            if (savedPassMode !== null) {
+                passModeCheckbox.checked = JSON.parse(savedPassMode);
+                passToggle.style.display = passModeCheckbox.checked ? 'block' : 'none';
+            }
+
+            const savedPassOptions = localStorage.getItem('passOptions');
+            if (savedPassOptions) {
+                const selected = JSON.parse(savedPassOptions);
+                Array.from(passSelect.options).forEach(option => {
+                    option.selected = selected.includes(option.value);
+                });
+            }
+
+            const savedShotLanes = localStorage.getItem('shotLanes');
+            if (savedShotLanes) {
+                const selected = JSON.parse(savedShotLanes);
+                Array.from(shotLanesSelect.options).forEach(option => {
+                    option.selected = selected.includes(option.value);
+                });
+            }
+
+            const savedBufferTime = localStorage.getItem('bufferTime');
+            if (savedBufferTime) {
+                bufferSelect.value = savedBufferTime;
+            }
+
+            const savedVoice = localStorage.getItem('voice');
+            if (savedVoice) {
+                voiceSelect.value = savedVoice;
+            }
+
+            const savedPassStats = localStorage.getItem('passStats');
+            if (savedPassStats) {
+                passStats = JSON.parse(savedPassStats);
+            }
+
+            const savedShotStats = localStorage.getItem('shotStats');
+            if (savedShotStats) {
+                shotStats = JSON.parse(savedShotStats);
+            }
+
+            calculateTotals();
+            updateCounts();
+        }
+
+        // Calculate totals from stats
+        function calculateTotals() {
+            passMakes = 0;
+            passMisses = 0;
+            shotMakes = 0;
+            shotMisses = 0;
+            for (let date in passStats) {
+                for (let option in passStats[date]) {
+                    passMakes += passStats[date][option].makes;
+                    passMisses += passStats[date][option].misses;
+                }
+            }
+            for (let date in shotStats) {
+                for (let lane in shotStats[date]) {
+                    shotMakes += shotStats[date][lane].makes;
+                    shotMisses += shotStats[date][lane].misses;
+                }
+            }
+        }
+
+        // Save settings to localStorage
+        function saveSettings() {
+            localStorage.setItem('passMode', JSON.stringify(passModeCheckbox.checked));
+            const selectedPass = Array.from(passSelect.selectedOptions).map(option => option.value);
+            localStorage.setItem('passOptions', JSON.stringify(selectedPass));
+            const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
+            localStorage.setItem('shotLanes', JSON.stringify(selectedLanes));
+            localStorage.setItem('bufferTime', bufferSelect.value);
+            localStorage.setItem('voice', voiceSelect.value);
+        }
+
+        // Save stats to localStorage
+        function saveStats() {
+            localStorage.setItem('passStats', JSON.stringify(passStats));
+            localStorage.setItem('shotStats', JSON.stringify(shotStats));
+        }
+
+        // Get today's date key
+        function getTodayKey() {
+            const today = new Date();
+            return today.toISOString().split('T')[0]; // YYYY-MM-DD
+        }
+
+        // Initialize daily stats if not exist
+        function initDailyStats() {
+            const today = getTodayKey();
+            if (!passStats[today]) {
+                passStats[today] = {};
+                allPassOptions.forEach(option => {
+                    passStats[today][option] = {makes: 0, misses: 0};
+                });
+            }
+            if (!shotStats[today]) {
+                shotStats[today] = {};
+                allShotNumbers.forEach(lane => {
+                    shotStats[today][lane] = {makes: 0, misses: 0};
+                });
+            }
+            saveStats();
+        }
 
         // Check if speech is supported
         if (!('speechSynthesis' in window)) {
@@ -162,6 +285,7 @@
                 loadVoices(); // Re-load and set default voice
                 validatePassOptions();
             }
+            saveSettings();
         });
 
         function validatePassOptions() {
@@ -181,8 +305,16 @@
         }
 
         // Enforce at least one option for pass and shot lanes
-        passSelect.addEventListener('change', validatePassOptions);
-        shotLanesSelect.addEventListener('change', validateShotLanes);
+        passSelect.addEventListener('change', () => {
+            validatePassOptions();
+            saveSettings();
+        });
+        shotLanesSelect.addEventListener('change', () => {
+            validateShotLanes();
+            saveSettings();
+        });
+        bufferSelect.addEventListener('change', saveSettings);
+        voiceSelect.addEventListener('change', saveSettings);
 
         // Load and populate English voices
         let voices = [];
@@ -316,6 +448,7 @@
 
         function startCycle() {
             lastPassCall = null;
+            lastCall = null;
             currentPhase = passModeCheckbox.checked ? 'pass' : 'shot';
             if (passModeCheckbox.checked) {
                 startPass();
@@ -355,10 +488,12 @@
                 const randomIndex = Math.floor(Math.random() * selectedPassOptions.length);
                 const passCall = selectedPassOptions[randomIndex];
                 lastPassCall = passCall;
+                lastCall = passCall; // For stats
                 statusEl.textContent = `Pass: ${passCall}!`;
                 speak(passCall);
+                // If pass is "shoot", treat as shot for stats
                 if (passCall === 'shoot') {
-                    currentPhase = 'shot'; // Treat as shot for stats
+                    currentPhase = 'shot';
                 }
                 // If pass is "shoot", skip to buffer; otherwise, go to shot after 1s
                 if (passCall === 'shoot') {
@@ -385,6 +520,7 @@
         }
 
         function startShot() {
+            currentPhase = 'shot';
             statusEl.textContent = 'Shot Set!';
             speak('set');
 
@@ -414,6 +550,7 @@
                 const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
                 const randomIndex = Math.floor(Math.random() * selectedLanes.length);
                 const shot = selectedLanes[randomIndex];
+                lastCall = shot; // For stats
                 statusEl.textContent = `Shoot ${shot}!`;
                 speak(shot);
                 // Start buffer if still running
@@ -445,25 +582,27 @@
         }
 
         function handleMakeMiss(transcript) {
-            if (currentPhase === 'pass' || currentPhase === 'shot') {
-                if (transcript === 'make') {
-                    if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
+            if (lastCall && currentPhase) {
+                const today = getTodayKey();
+                if (currentPhase === 'pass') {
+                    passStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
+                    if (transcript === 'make') {
                         passMakes++;
                     } else {
-                        shotMakes++;
-                    }
-                } else if (transcript === 'miss') {
-                    if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
                         passMisses++;
                         resetCycle();
                         startCycle(); // Restart immediately
                         return;
-                    } else if (currentPhase === 'pass' && lastPassCall === 'shoot') {
-                        shotMisses++;
+                    }
+                } else if (currentPhase === 'shot') {
+                    shotStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
+                    if (transcript === 'make') {
+                        shotMakes++;
                     } else {
                         shotMisses++;
                     }
                 }
+                saveStats();
                 updateCounts();
             }
         }
@@ -473,14 +612,22 @@
             const totalMisses = passMisses + shotMisses;
             countsEl.textContent = `Made: ${totalMakes} | Miss: ${totalMisses}`;
 
-            const passAccuracy = passMakes + passMisses > 0 ? ((passMakes / (passMakes + passMisses)) * 100).toFixed(2) : 0;
-            const shotAccuracy = shotMakes + shotMisses > 0 ? ((shotMakes / (shotMakes + shotMisses)) * 100).toFixed(2) : 0;
+            const today = getTodayKey();
+            let passStatsText = 'Pass Stats:<br>';
+            for (let option in passStats[today]) {
+                const stats = passStats[today][option];
+                const accuracy = stats.makes + stats.misses > 0 ? ((stats.makes / (stats.makes + stats.misses)) * 100).toFixed(2) : 0;
+                passStatsText += `${option}: Makes ${stats.makes} | Misses ${stats.misses} | Accuracy ${accuracy}%<br>`;
+            }
+            passStatsEl.innerHTML = passStatsText;
 
-            statsEl.innerHTML = `
-                <h3>Statistics</h3>
-                <p>Pass Makes: ${passMakes} | Pass Misses: ${passMisses} | Pass Accuracy: ${passAccuracy}%</p>
-                <p>Shot Makes: ${shotMakes} | Shot Misses: ${shotMisses} | Shot Accuracy: ${shotAccuracy}%</p>
-            `;
+            let shotStatsText = 'Shot Stats:<br>';
+            for (let lane in shotStats[today]) {
+                const stats = shotStats[today][lane];
+                const accuracy = stats.makes + stats.misses > 0 ? ((stats.makes / (stats.makes + stats.misses)) * 100).toFixed(2) : 0;
+                shotStatsText += `Lane ${lane}: Makes ${stats.makes} | Misses ${stats.misses} | Accuracy ${accuracy}%<br>`;
+            }
+            shotStatsEl.innerHTML = shotStatsText;
         }
 
         function resetCycle() {
@@ -495,6 +642,7 @@
             releaseWakeLock(); // Release screen wake lock
             currentPhase = null;
             lastPassCall = null;
+            lastCall = null;
             startBtn.disabled = false;
             resetBtn.disabled = true;
             statusEl.textContent = 'Foosball Timer';
@@ -565,7 +713,11 @@
         testSpeechBtn.addEventListener('click', () => {
             speak('test');
         });
-        updateCounts(); // Initial update
+
+        // Load settings and init stats
+        loadSettings();
+        initDailyStats();
+        updateCounts();
     </script>
 </body>
 </html>
