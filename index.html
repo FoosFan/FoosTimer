@@ -130,7 +130,8 @@
         let passMisses = 0;
         let shotMakes = 0;
         let shotMisses = 0;
-        let currentPhase = null; // 'pass' or 'shot' to track current timer
+        let currentPhase = null; // 'pass' or 'shot'
+        let lastPassCall = null; // To track if pass was 'shoot'
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
@@ -314,6 +315,7 @@
         }
 
         function startCycle() {
+            lastPassCall = null;
             currentPhase = passModeCheckbox.checked ? 'pass' : 'shot';
             if (passModeCheckbox.checked) {
                 startPass();
@@ -323,7 +325,6 @@
         }
 
         function startPass() {
-            currentPhase = 'pass';
             statusEl.textContent = 'Pass Set!';
             speak('set');
 
@@ -353,8 +354,12 @@
                 const selectedPassOptions = Array.from(passSelect.selectedOptions).map(option => option.value);
                 const randomIndex = Math.floor(Math.random() * selectedPassOptions.length);
                 const passCall = selectedPassOptions[randomIndex];
+                lastPassCall = passCall;
                 statusEl.textContent = `Pass: ${passCall}!`;
                 speak(passCall);
+                if (passCall === 'shoot') {
+                    currentPhase = 'shot'; // Treat as shot for stats
+                }
                 // If pass is "shoot", skip to buffer; otherwise, go to shot after 1s
                 if (passCall === 'shoot') {
                     // Wait 1 second then start buffer if still running
@@ -380,7 +385,6 @@
         }
 
         function startShot() {
-            currentPhase = 'shot';
             statusEl.textContent = 'Shot Set!';
             speak('set');
 
@@ -421,7 +425,6 @@
         }
 
         function startBuffer() {
-            currentPhase = 'buffer';
             const bufferTime = parseInt(bufferSelect.value, 10); // Get user-selected buffer time
             let bufferSeconds = bufferTime;
             statusEl.textContent = 'Buffer';
@@ -434,7 +437,7 @@
                     clearInterval(bufferInterval);
                     pendingTimers = pendingTimers.filter(id => id !== bufferInterval);
                     if (isRunning) {
-                        startCycle(); // Loop back, checking mode
+                        startCycle();
                     }
                 }
             }, 1000);
@@ -442,30 +445,27 @@
         }
 
         function handleMakeMiss(transcript) {
-            console.log(`Processing voice command: "${transcript}", Current phase: ${currentPhase}`);
-            if (transcript === 'make' && (currentPhase === 'pass' || currentPhase === 'shot')) {
-                if (currentPhase === 'pass') {
-                    passMakes++;
-                    console.log('Incremented passMakes:', passMakes);
-                } else if (currentPhase === 'shot') {
-                    shotMakes++;
-                    console.log('Incremented shotMakes:', shotMakes);
+            if (currentPhase === 'pass' || currentPhase === 'shot') {
+                if (transcript === 'make') {
+                    if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
+                        passMakes++;
+                    } else {
+                        shotMakes++;
+                    }
+                } else if (transcript === 'miss') {
+                    if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
+                        passMisses++;
+                        resetCycle();
+                        startCycle(); // Restart immediately
+                        return;
+                    } else if (currentPhase === 'pass' && lastPassCall === 'shoot') {
+                        shotMisses++;
+                    } else {
+                        shotMisses++;
+                    }
                 }
-            } else if (transcript === 'miss' && (currentPhase === 'pass' || currentPhase === 'shot')) {
-                if (currentPhase === 'pass') {
-                    passMisses++;
-                    console.log('Incremented passMisses:', passMisses);
-                    resetCycle();
-                    startCycle(); // Restart immediately
-                    return;
-                } else if (currentPhase === 'shot') {
-                    shotMisses++;
-                    console.log('Incremented shotMisses:', shotMisses);
-                }
-            } else {
-                console.log(`Ignored command "${transcript}" in phase ${currentPhase}`);
+                updateCounts();
             }
-            updateCounts();
         }
 
         function updateCounts() {
@@ -494,11 +494,11 @@
             speechSynthesis.cancel(); // Stop any ongoing speech
             releaseWakeLock(); // Release screen wake lock
             currentPhase = null;
+            lastPassCall = null;
             startBtn.disabled = false;
             resetBtn.disabled = true;
             statusEl.textContent = 'Foosball Timer';
             timerEl.textContent = 'Press Start';
-            updateCounts();
         }
 
         // Voice command setup
@@ -519,8 +519,6 @@
                     resetBtn.click(); // Simulate reset
                 } else if (transcript === 'make' || transcript === 'miss') {
                     handleMakeMiss(transcript);
-                } else {
-                    console.log(`Unrecognized command: "${transcript}"`);
                 }
             };
 
