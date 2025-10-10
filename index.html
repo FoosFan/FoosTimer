@@ -323,6 +323,7 @@
         }
 
         function startPass() {
+            currentPhase = 'pass';
             statusEl.textContent = 'Pass Set!';
             speak('set');
 
@@ -441,21 +442,28 @@
         }
 
         function handleMakeMiss(transcript) {
-            if (transcript === 'make') {
+            console.log(`Processing voice command: "${transcript}", Current phase: ${currentPhase}`);
+            if (transcript === 'make' && (currentPhase === 'pass' || currentPhase === 'shot')) {
                 if (currentPhase === 'pass') {
                     passMakes++;
+                    console.log('Incremented passMakes:', passMakes);
                 } else if (currentPhase === 'shot') {
                     shotMakes++;
+                    console.log('Incremented shotMakes:', shotMakes);
                 }
-            } else if (transcript === 'miss') {
+            } else if (transcript === 'miss' && (currentPhase === 'pass' || currentPhase === 'shot')) {
                 if (currentPhase === 'pass') {
                     passMisses++;
+                    console.log('Incremented passMisses:', passMisses);
                     resetCycle();
                     startCycle(); // Restart immediately
                     return;
                 } else if (currentPhase === 'shot') {
                     shotMisses++;
+                    console.log('Incremented shotMisses:', shotMisses);
                 }
+            } else {
+                console.log(`Ignored command "${transcript}" in phase ${currentPhase}`);
             }
             updateCounts();
         }
@@ -490,6 +498,7 @@
             resetBtn.disabled = true;
             statusEl.textContent = 'Foosball Timer';
             timerEl.textContent = 'Press Start';
+            updateCounts();
         }
 
         // Voice command setup
@@ -510,6 +519,8 @@
                     resetBtn.click(); // Simulate reset
                 } else if (transcript === 'make' || transcript === 'miss') {
                     handleMakeMiss(transcript);
+                } else {
+                    console.log(`Unrecognized command: "${transcript}"`);
                 }
             };
 
