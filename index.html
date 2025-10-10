@@ -145,6 +145,10 @@
         let currentPhase = null; // 'pass' or 'shot'
         let lastPassCall = null; // To track if pass was 'shoot'
         let lastCall = null; // To track the last pass or shot call for stats
+        let passMakes = 0;
+        let passMisses = 0;
+        let shotMakes = 0;
+        let shotMisses = 0;
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
@@ -285,14 +289,18 @@
 
         // Start practice timer
         function startPracticeTimer() {
-            practiceStartTime = Date.now();
-            practiceTimerInterval = setInterval(() => {
-                const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
-                practiceTime[getTodayKey()] += elapsed;
+            if (!practiceStartTime) {
                 practiceStartTime = Date.now();
-                saveData();
-                updateCounts();
-            }, 1000); // Update every second
+            }
+            if (!practiceTimerInterval) {
+                practiceTimerInterval = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
+                    practiceTime[getTodayKey()] += elapsed;
+                    practiceStartTime = Date.now();
+                    saveData();
+                    updateCounts();
+                }, 1000); // Update every second
+            }
         }
 
         // Stop practice timer
@@ -538,11 +546,7 @@
                 lastCall = passCall; // For stats
                 statusEl.textContent = `Pass: ${passCall}!`;
                 speak(passCall);
-                // If pass is "shoot", treat as shot for stats
-                if (passCall === 'shoot') {
-                    currentPhase = 'shot';
-                }
-                // If pass is "shoot", skip to buffer; otherwise, go to shot after 1s
+                // If pass is "shoot", treat as pass for stats, but skip shot
                 if (passCall === 'shoot') {
                     // Wait 1 second then start buffer if still running
                     const delayToBuffer = setTimeout(() => {
@@ -567,6 +571,7 @@
         }
 
         function startShot() {
+            lastPassCall = null; // Reset for normal shot
             statusEl.textContent = 'Shot Set!';
             speak('set');
 
@@ -630,17 +635,19 @@
         function handleMakeMiss(transcript) {
             if (lastCall && currentPhase) {
                 const today = getTodayKey();
-                if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
+                if (lastPassCall) { // Pass phase, including 'shoot'
                     passStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
                     if (transcript === 'make') {
                         passMakes++;
                     } else {
                         passMisses++;
-                        resetCycle();
-                        startCycle(); // Restart immediately
-                        return;
+                        if (lastPassCall !== 'shoot') {
+                            resetCycle();
+                            startCycle(); // Restart immediately
+                            return;
+                        }
                     }
-                } else {
+                } else { // Normal shot phase
                     shotStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
                     if (transcript === 'make') {
                         shotMakes++;
