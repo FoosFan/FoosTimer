@@ -10,10 +10,10 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
+            height: auto; /* Allow scrolling */
             margin: 0;
             background-color: #f0f0f0;
+            padding: 20px;
         }
         #status {
             font-size: 24px;
@@ -52,11 +52,21 @@
             font-size: 16px;
             padding: 5px;
         }
+        #counts {
+            font-size: 20px;
+            margin: 20px 0;
+        }
+        #stats {
+            margin-top: 50px;
+            font-size: 16px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div id="status">Foosball Timer</div>
     <div id="timer">Press Start</div>
+    <div id="counts">Made: 0 | Miss: 0</div>
     <label id="modeToggle">
         <input type="checkbox" id="passModeCheckbox"> Enable Pass Timer Mode
     </label>
@@ -104,18 +114,31 @@
     <button id="resetBtn" disabled>Reset</button>
     <button id="testSpeechBtn">Test Speech</button>
 
+    <div id="stats">
+        <h3>Statistics</h3>
+        <p>Pass Makes: 0 | Pass Misses: 0 | Pass Accuracy: 0%</p>
+        <p>Shot Makes: 0 | Shot Misses: 0 | Shot Accuracy: 0%</p>
+    </div>
+
     <script>
         const allShotNumbers = ['1', '2', '3', '4', '5'];
         const allPassOptions = ['wall', 'lane', 'middle', 'shoot'];
         let pendingTimers = []; // Array to hold all interval/timeout IDs
         let isRunning = false;
         let wakeLock = null; // For Screen Wake Lock
+        let passMakes = 0;
+        let passMisses = 0;
+        let shotMakes = 0;
+        let shotMisses = 0;
+        let currentPhase = null; // 'pass' or 'shot' to track current timer
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
         const minPassDelay = 4; // Min seconds for pass call
         const statusEl = document.getElementById('status');
         const timerEl = document.getElementById('timer');
+        const countsEl = document.getElementById('counts');
+        const statsEl = document.getElementById('stats');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const testSpeechBtn = document.getElementById('testSpeechBtn');
@@ -291,6 +314,7 @@
         }
 
         function startCycle() {
+            currentPhase = passModeCheckbox.checked ? 'pass' : 'shot';
             if (passModeCheckbox.checked) {
                 startPass();
             } else {
@@ -355,6 +379,7 @@
         }
 
         function startShot() {
+            currentPhase = 'shot';
             statusEl.textContent = 'Shot Set!';
             speak('set');
 
@@ -395,6 +420,7 @@
         }
 
         function startBuffer() {
+            currentPhase = 'buffer';
             const bufferTime = parseInt(bufferSelect.value, 10); // Get user-selected buffer time
             let bufferSeconds = bufferTime;
             statusEl.textContent = 'Buffer';
@@ -414,6 +440,41 @@
             pendingTimers.push(bufferInterval);
         }
 
+        function handleMakeMiss(transcript) {
+            if (transcript === 'make') {
+                if (currentPhase === 'pass') {
+                    passMakes++;
+                } else if (currentPhase === 'shot') {
+                    shotMakes++;
+                }
+            } else if (transcript === 'miss') {
+                if (currentPhase === 'pass') {
+                    passMisses++;
+                    resetCycle();
+                    startCycle(); // Restart immediately
+                    return;
+                } else if (currentPhase === 'shot') {
+                    shotMisses++;
+                }
+            }
+            updateCounts();
+        }
+
+        function updateCounts() {
+            const totalMakes = passMakes + shotMakes;
+            const totalMisses = passMisses + shotMisses;
+            countsEl.textContent = `Made: ${totalMakes} | Miss: ${totalMisses}`;
+
+            const passAccuracy = passMakes + passMisses > 0 ? ((passMakes / (passMakes + passMisses)) * 100).toFixed(2) : 0;
+            const shotAccuracy = shotMakes + shotMisses > 0 ? ((shotMakes / (shotMakes + shotMisses)) * 100).toFixed(2) : 0;
+
+            statsEl.innerHTML = `
+                <h3>Statistics</h3>
+                <p>Pass Makes: ${passMakes} | Pass Misses: ${passMisses} | Pass Accuracy: ${passAccuracy}%</p>
+                <p>Shot Makes: ${shotMakes} | Shot Misses: ${shotMisses} | Shot Accuracy: ${shotAccuracy}%</p>
+            `;
+        }
+
         function resetCycle() {
             isRunning = false;
             // Clear all pending timers immediately
@@ -424,6 +485,7 @@
             }
             speechSynthesis.cancel(); // Stop any ongoing speech
             releaseWakeLock(); // Release screen wake lock
+            currentPhase = null;
             startBtn.disabled = false;
             resetBtn.disabled = true;
             statusEl.textContent = 'Foosball Timer';
@@ -446,6 +508,8 @@
                     startBtn.click(); // Simulate start
                 } else if (transcript === 'reset') {
                     resetBtn.click(); // Simulate reset
+                } else if (transcript === 'make' || transcript === 'miss') {
+                    handleMakeMiss(transcript);
                 }
             };
 
@@ -492,6 +556,7 @@
         testSpeechBtn.addEventListener('click', () => {
             speak('test');
         });
+        updateCounts(); // Initial update
     </script>
 </body>
 </html>
