@@ -120,6 +120,7 @@
 
     <div id="stats">
         <h3>Statistics</h3>
+        <p>Total Practice Time: 0 hours 0 minutes</p>
         <div class="stats-section">
             <h4>Pass Statistics</h4>
             <p id="passStats">No pass stats yet</p>
@@ -138,13 +139,12 @@
         let wakeLock = null; // For Screen Wake Lock
         let passStats = {}; // {date: {wall: {makes: 0, misses: 0}, ...}}
         let shotStats = {}; // {date: {1: {makes: 0, misses: 0}, ...}}
-        let currentPhase = null; // 'pass' or 'shot' to track current timer
+        let practiceTime = {}; // {date: totalSeconds}
+        let practiceTimerInterval = null;
+        let practiceStartTime = null;
+        let currentPhase = null; // 'pass' or 'shot'
         let lastPassCall = null; // To track if pass was 'shoot'
         let lastCall = null; // To track the last pass or shot call for stats
-        let passMakes = 0;
-        let passMisses = 0;
-        let shotMakes = 0;
-        let shotMisses = 0;
         const maxShotCountdown = 15; // Max time for shot visual countdown
         const minShotDelay = 5; // Min seconds to wait before possible shot call
         const maxPassCountdown = 10; // Max time for pass visual countdown
@@ -154,6 +154,7 @@
         const countsEl = document.getElementById('counts');
         const passStatsEl = document.getElementById('passStats');
         const shotStatsEl = document.getElementById('shotStats');
+        const totalPracticeEl = document.querySelector('#stats p:first-child');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
         const testSpeechBtn = document.getElementById('testSpeechBtn');
@@ -208,6 +209,11 @@
                 shotStats = JSON.parse(savedShotStats);
             }
 
+            const savedPracticeTime = localStorage.getItem('practiceTime');
+            if (savedPracticeTime) {
+                practiceTime = JSON.parse(savedPracticeTime);
+            }
+
             calculateTotals();
             updateCounts();
         }
@@ -243,10 +249,11 @@
             localStorage.setItem('voice', voiceSelect.value);
         }
 
-        // Save stats to localStorage
-        function saveStats() {
+        // Save stats and practice time to localStorage
+        function saveData() {
             localStorage.setItem('passStats', JSON.stringify(passStats));
             localStorage.setItem('shotStats', JSON.stringify(shotStats));
+            localStorage.setItem('practiceTime', JSON.stringify(practiceTime));
         }
 
         // Get today's date key
@@ -270,7 +277,37 @@
                     shotStats[today][lane] = {makes: 0, misses: 0};
                 });
             }
-            saveStats();
+            if (!practiceTime[today]) {
+                practiceTime[today] = 0;
+            }
+            saveData();
+        }
+
+        // Start practice timer
+        function startPracticeTimer() {
+            practiceStartTime = Date.now();
+            practiceTimerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
+                practiceTime[getTodayKey()] += elapsed;
+                practiceStartTime = Date.now();
+                saveData();
+                updateCounts();
+            }, 1000); // Update every second
+        }
+
+        // Stop practice timer
+        function stopPracticeTimer() {
+            if (practiceTimerInterval) {
+                clearInterval(practiceTimerInterval);
+                practiceTimerInterval = null;
+            }
+            if (practiceStartTime) {
+                const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
+                practiceTime[getTodayKey()] += elapsed;
+                practiceStartTime = null;
+                saveData();
+                updateCounts();
+            }
         }
 
         // Check if speech is supported
@@ -422,6 +459,16 @@
                     console.log('Wake lock request error:', e);
                 }
             }
+            if (document.hidden && isRunning) {
+                stopPracticeTimer(); // Save time on background
+            } else if (!document.hidden && isRunning) {
+                startPracticeTimer(); // Resume timer on foreground
+            }
+        });
+
+        // Handle unload for saving practice time
+        window.addEventListener('unload', () => {
+            stopPracticeTimer();
         });
 
         async function requestWakeLock() {
@@ -520,7 +567,6 @@
         }
 
         function startShot() {
-            currentPhase = 'shot';
             statusEl.textContent = 'Shot Set!';
             speak('set');
 
@@ -584,7 +630,7 @@
         function handleMakeMiss(transcript) {
             if (lastCall && currentPhase) {
                 const today = getTodayKey();
-                if (currentPhase === 'pass') {
+                if (currentPhase === 'pass' && lastPassCall !== 'shoot') {
                     passStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
                     if (transcript === 'make') {
                         passMakes++;
@@ -594,7 +640,7 @@
                         startCycle(); // Restart immediately
                         return;
                     }
-                } else if (currentPhase === 'shot') {
+                } else {
                     shotStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
                     if (transcript === 'make') {
                         shotMakes++;
@@ -602,7 +648,7 @@
                         shotMisses++;
                     }
                 }
-                saveStats();
+                saveData();
                 updateCounts();
             }
         }
@@ -628,9 +674,15 @@
                 shotStatsText += `Lane ${lane}: Makes ${stats.makes} | Misses ${stats.misses} | Accuracy ${accuracy}%<br>`;
             }
             shotStatsEl.innerHTML = shotStatsText;
+
+            const totalSeconds = practiceTime[today] || 0;
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            totalPracticeEl.textContent = `Total Practice Time: ${hours} hours ${minutes} minutes`;
         }
 
         function resetCycle() {
+            stopPracticeTimer();
             isRunning = false;
             // Clear all pending timers immediately
             while (pendingTimers.length > 0) {
@@ -707,6 +759,7 @@
             startBtn.disabled = true;
             resetBtn.disabled = false;
             await requestWakeLock(); // Request screen wake lock
+            startPracticeTimer();
             startCycle();
         });
         resetBtn.addEventListener('click', resetCycle);
