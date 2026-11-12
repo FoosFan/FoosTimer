@@ -1,783 +1,680 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foosball Timer</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: auto; /* Allow scrolling */
-            margin: 0;
-            background-color: #f0f0f0;
-            padding: 20px;
-        }
-        #status {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        button {
-            font-size: 18px;
-            padding: 10px 20px;
-            margin: 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-        #startBtn {
-            background-color: #4CAF50;
-            color: white;
-        }
-        #resetBtn {
-            background-color: #f44336;
-            color: white;
-        }
-        #testSpeechBtn {
-            background-color: #2196F3;
-            color: white;
-        }
-        #timer {
-            font-size: 60px;
-            font-weight: bold;
-            color: #333;
-        }
-        #modeToggle, #bufferToggle, #lanesToggle, #voiceToggle, #passToggle {
-            font-size: 16px;
-            margin: 10px;
-        }
-        select {
-            font-size: 16px;
-            padding: 5px;
-        }
-        #counts {
-            font-size: 20px;
-            margin: 20px 0;
-        }
-        #stats {
-            margin-top: 50px;
-            font-size: 16px;
-            text-align: center;
-            width: 100%;
-        }
-        .stats-section {
-            margin-bottom: 20px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a14">
+<title>Foosball Timer</title>
+<style>
+  :root {
+    --bg: #0f1a14;
+    --panel: #17251d;
+    --panel-2: #1f3127;
+    --line: #2d4437;
+    --text: #eef5ef;
+    --muted: #92a89a;
+    --accent: #3ddc84;
+    --accent-dim: #1e6b41;
+    --warn: #ffb547;
+    --bad: #ff5d5d;
+    --call: #ffe14d;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+  body { padding: max(16px, env(safe-area-inset-top)) 16px 40px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 18px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+    margin: 0 0 14px; text-align: center; font-weight: 700; }
+
+  /* Rod sequence */
+  .seq { display: flex; justify-content: center; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .seq .rod { min-width: 64px; padding: 8px 10px; border-radius: 999px; text-align: center;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted); font-weight: 700; font-size: 14px; }
+  .seq .rod.on { color: var(--text); border-color: var(--accent-dim); }
+  .seq .rod.off { opacity: .35; text-decoration: line-through; }
+  .seq .rod.active { background: var(--accent); color: #062312; border-color: var(--accent); }
+  .seq .arrow { color: var(--muted); }
+
+  /* Main display */
+  .display { background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+    padding: 18px 16px 20px; text-align: center; }
+  #status { font-size: 15px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); min-height: 20px; }
+  #timer { font-size: 104px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; margin: 6px 0 4px; }
+  #timer.small { font-size: 44px; padding: 30px 0 30px; }
+  #call { font-size: 44px; font-weight: 900; color: var(--call); min-height: 54px; text-transform: uppercase; letter-spacing: .04em; }
+  .bar { height: 8px; background: var(--panel-2); border-radius: 99px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; width: 0%; background: var(--accent); transition: width .1s linear; }
+  .bar.late > div { background: var(--warn); }
+  .bar.buffer > div { background: #5aa9ff; }
+  #counts { margin-top: 12px; font-size: 16px; color: var(--muted); }
+  #counts b { color: var(--text); }
+
+  /* Buttons */
+  .row { display: flex; gap: 10px; margin-top: 12px; }
+  button { font: inherit; border: none; border-radius: var(--radius); cursor: pointer; padding: 16px; font-weight: 700; font-size: 18px; flex: 1; }
+  button:disabled { opacity: .35; cursor: default; }
+  .btn-start { background: var(--accent); color: #062312; }
+  .btn-reset { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .btn-make { background: #1d4d33; color: #c9ffe0; font-size: 22px; padding: 22px; }
+  .btn-miss { background: #4d1d1d; color: #ffd0d0; font-size: 22px; padding: 22px; }
+  .btn-small { font-size: 14px; padding: 10px 12px; flex: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  #micStatus { text-align: center; font-size: 13px; color: var(--muted); margin-top: 10px; }
+  #micStatus.on::before { content: "● "; color: var(--accent); }
+
+  /* Panels */
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-top: 14px; }
+  summary { padding: 14px 16px; font-weight: 700; cursor: pointer; list-style: none; display: flex; justify-content: space-between; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "▾"; color: var(--muted); }
+  details[open] summary::after { content: "▴"; }
+  .panel-body { padding: 0 16px 16px; }
+
+  .rodcard { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+  .rodcard.disabled .rodbody { opacity: .4; }
+  .rodhead { display: flex; justify-content: space-between; align-items: center; }
+  .rodhead .t { font-weight: 800; }
+  .rodhead .s { font-size: 12px; color: var(--muted); }
+
+  .switch { position: relative; width: 50px; height: 28px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch span { position: absolute; inset: 0; background: #3a4a40; border-radius: 99px; transition: .2s; }
+  .switch span::before { content: ""; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::before { transform: translateX(22px); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+  .chip { padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); background: transparent; color: var(--muted);
+    font-size: 15px; font-weight: 700; flex: none; }
+  .chip.sel { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+
+  .slider { margin-top: 10px; }
+  .slider label { display: flex; justify-content: space-between; font-size: 14px; color: var(--muted); }
+  .slider label b { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .field { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .field label { color: var(--muted); font-size: 14px; }
+  select { font: inherit; font-size: 15px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px; max-width: 65%; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  h4 { margin: 8px 0 6px; font-size: 14px; color: var(--accent); }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
 </head>
 <body>
-    <div id="status">Foosball Timer</div>
-    <div id="timer">Press Start</div>
-    <div id="counts">Made: 0 | Miss: 0</div>
-    <label id="modeToggle">
-        <input type="checkbox" id="passModeCheckbox"> Enable Pass Timer Mode
-    </label>
-    <label id="passToggle" style="display: none;">
-        Pass Options (Select at least 1):
-        <select id="passSelect" multiple size="4">
-            <option value="wall" selected>Wall</option>
-            <option value="lane" selected>Lane</option>
-            <option value="middle" selected>Middle</option>
-            <option value="shoot" selected>Shoot</option>
-        </select>
-    </label>
-    <label id="lanesToggle">
-        Shot Lanes (Select at least 1):
-        <select id="shotLanesSelect" multiple size="5">
-            <option value="1" selected>1</option>
-            <option value="2" selected>2</option>
-            <option value="3" selected>3</option>
-            <option value="4" selected>4</option>
-            <option value="5" selected>5</option>
-        </select>
-    </label>
-    <label id="bufferToggle">
-        Buffer Time (seconds):
-        <select id="bufferSelect">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5" selected>5</option>
-            <option value="6">6</option>
-            <option value="7">7</option>
-            <option value="8">8</option>
-            <option value="9">9</option>
-            <option value="10">10</option>
-        </select>
-    </label>
-    <label id="voiceToggle">
-        English Voice:
-        <select id="voiceSelect">
-            <!-- Voices will be populated dynamically -->
-        </select>
-    </label>
-    <button id="startBtn">Start</button>
-    <button id="resetBtn" disabled>Reset</button>
-    <button id="testSpeechBtn">Test Speech</button>
+<div class="wrap">
+  <h1>Foosball Timer</h1>
 
-    <div id="stats">
-        <h3>Statistics</h3>
-        <p>Total Practice Time: 0 hours 0 minutes</p>
-        <div class="stats-section">
-            <h4>Pass Statistics</h4>
-            <p id="passStats">No pass stats yet</p>
-        </div>
-        <div class="stats-section">
-            <h4>Shot Statistics</h4>
-            <p id="shotStats">No shot stats yet</p>
-        </div>
+  <div class="seq" id="seq"></div>
+
+  <div class="display">
+    <div id="status">Ready</div>
+    <div id="timer" class="small">Press Start</div>
+    <div id="call"></div>
+    <div class="bar" id="bar"><div id="barFill"></div></div>
+    <div id="counts">Session — Made <b>0</b> · Miss <b>0</b></div>
+  </div>
+
+  <div class="row">
+    <button class="btn-start" id="startBtn">Start</button>
+    <button class="btn-reset" id="resetBtn" disabled>Reset</button>
+  </div>
+  <div class="row">
+    <button class="btn-make" id="makeBtn">Make</button>
+    <button class="btn-miss" id="missBtn">Miss</button>
+  </div>
+  <div id="micStatus">Voice commands: say “start”, “reset”, “make”, “miss”</div>
+
+  <details id="settingsPanel">
+    <summary>Drill Settings</summary>
+    <div class="panel-body" id="rodSettings"></div>
+    <div class="panel-body">
+      <div class="field">
+        <label for="bufferSelect">Buffer between reps</label>
+        <select id="bufferSelect"></select>
+      </div>
+      <div class="field">
+        <label for="voiceSelect">Voice</label>
+        <select id="voiceSelect"></select>
+      </div>
+      <div class="row" style="margin-top:0">
+        <button class="btn-small" id="testSpeechBtn">Test speech</button>
+        <button class="btn-small" id="defaultsBtn">ITSF time defaults</button>
+      </div>
+      <p class="hint">ITSF limits: 2-rod 15s · 5-rod 10s · 3-rod 15s. Each call lands at a random moment between “earliest call” and 1 second before the limit.</p>
     </div>
+  </details>
 
-    <script>
-        const allShotNumbers = ['1', '2', '3', '4', '5'];
-        const allPassOptions = ['wall', 'lane', 'middle', 'shoot'];
-        let pendingTimers = []; // Array to hold all interval/timeout IDs
-        let isRunning = false;
-        let wakeLock = null; // For Screen Wake Lock
-        let passStats = {}; // {date: {wall: {makes: 0, misses: 0}, ...}}
-        let shotStats = {}; // {date: {1: {makes: 0, misses: 0}, ...}}
-        let practiceTime = {}; // {date: totalSeconds}
-        let practiceTimerInterval = null;
-        let practiceStartTime = null;
-        let currentPhase = null; // 'pass' or 'shot'
-        let lastPassCall = null; // To track if pass was 'shoot'
-        let lastCall = null; // To track the last pass or shot call for stats
-        let passMakes = 0;
-        let passMisses = 0;
-        let shotMakes = 0;
-        let shotMisses = 0;
-        const maxShotCountdown = 15; // Max time for shot visual countdown
-        const minShotDelay = 5; // Min seconds to wait before possible shot call
-        const maxPassCountdown = 10; // Max time for pass visual countdown
-        const minPassDelay = 4; // Min seconds for pass call
-        const statusEl = document.getElementById('status');
-        const timerEl = document.getElementById('timer');
-        const countsEl = document.getElementById('counts');
-        const passStatsEl = document.getElementById('passStats');
-        const shotStatsEl = document.getElementById('shotStats');
-        const totalPracticeEl = document.querySelector('#stats p:first-child');
-        const startBtn = document.getElementById('startBtn');
-        const resetBtn = document.getElementById('resetBtn');
-        const testSpeechBtn = document.getElementById('testSpeechBtn');
-        const passModeCheckbox = document.getElementById('passModeCheckbox');
-        const passSelect = document.getElementById('passSelect');
-        const shotLanesSelect = document.getElementById('shotLanesSelect');
-        const bufferSelect = document.getElementById('bufferSelect');
-        const voiceSelect = document.getElementById('voiceSelect');
-        const passToggle = document.getElementById('passToggle');
+  <details id="statsPanel">
+    <summary>Statistics</summary>
+    <div class="panel-body">
+      <p class="muted" id="practiceTime">Practice time today: 0h 0m</p>
+      <div id="statsTables"></div>
+      <p class="muted" id="allTime"></p>
+    </div>
+  </details>
+</div>
 
-        // Load saved settings and stats from localStorage
-        function loadSettings() {
-            const savedPassMode = localStorage.getItem('passMode');
-            if (savedPassMode !== null) {
-                passModeCheckbox.checked = JSON.parse(savedPassMode);
-                passToggle.style.display = passModeCheckbox.checked ? 'block' : 'none';
-            }
+<script>
+(() => {
+  // ---------- Rod definitions ----------
+  const ROD_ORDER = ['rod2', 'rod5', 'rod3'];
+  const RODS = {
+    rod2: {
+      name: '2-Rod Pass', short: '2', kind: 'pass', statsKey: 'rod2Stats',
+      sub: 'Pass from the 2-rod to the 3-rod',
+      options: [
+        { v: 'wall',  label: 'Wall',   say: 'wall' },
+        { v: 'lane1', label: 'Lane 1', say: 'lane one' },
+        { v: 'lane2', label: 'Lane 2', say: 'lane two' },
+      ],
+      defLimit: 15, defEarliest: 4,
+    },
+    rod5: {
+      name: '5-Rod Pass', short: '5', kind: 'pass', statsKey: 'passStats',
+      sub: 'Pass from the 5-rod to the 3-rod',
+      options: [
+        { v: 'wall',   label: 'Wall',   say: 'wall' },
+        { v: 'lane',   label: 'Lane',   say: 'lane' },
+        { v: 'middle', label: 'Middle', say: 'middle' },
+        { v: 'shoot',  label: 'Shoot',  say: 'shoot' },
+      ],
+      defLimit: 10, defEarliest: 4,
+    },
+    rod3: {
+      name: '3-Rod Shot', short: '3', kind: 'shot', statsKey: 'shotStats',
+      sub: 'Shot lane called',
+      options: ['1', '2', '3', '4', '5'].map(n => ({ v: n, label: 'Lane ' + n, say: n })),
+      defLimit: 15, defEarliest: 5,
+    },
+  };
+  const MAX_LIMIT = 30, MIN_LIMIT = 3;
 
-            const savedPassOptions = localStorage.getItem('passOptions');
-            if (savedPassOptions) {
-                const selected = JSON.parse(savedPassOptions);
-                Array.from(passSelect.options).forEach(option => {
-                    option.selected = selected.includes(option.value);
-                });
-            }
+  // ---------- Storage helpers ----------
+  const store = {
+    get(k, fallback) { try { const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+  };
 
-            const savedShotLanes = localStorage.getItem('shotLanes');
-            if (savedShotLanes) {
-                const selected = JSON.parse(savedShotLanes);
-                Array.from(shotLanesSelect.options).forEach(option => {
-                    option.selected = selected.includes(option.value);
-                });
-            }
+  function defaultSettings() {
+    const s = { enabled: { rod2: false, rod5: false, rod3: true }, options: {}, limit: {}, earliest: {}, buffer: 5, voiceName: '' };
+    ROD_ORDER.forEach(r => {
+      s.options[r] = RODS[r].options.map(o => o.v);
+      s.limit[r] = RODS[r].defLimit;
+      s.earliest[r] = RODS[r].defEarliest;
+    });
+    return s;
+  }
 
-            const savedBufferTime = localStorage.getItem('bufferTime');
-            if (savedBufferTime) {
-                bufferSelect.value = savedBufferTime;
-            }
-
-            const savedVoice = localStorage.getItem('voice');
-            if (savedVoice) {
-                voiceSelect.value = savedVoice;
-            }
-
-            const savedPassStats = localStorage.getItem('passStats');
-            if (savedPassStats) {
-                passStats = JSON.parse(savedPassStats);
-            }
-
-            const savedShotStats = localStorage.getItem('shotStats');
-            if (savedShotStats) {
-                shotStats = JSON.parse(savedShotStats);
-            }
-
-            const savedPracticeTime = localStorage.getItem('practiceTime');
-            if (savedPracticeTime) {
-                practiceTime = JSON.parse(savedPracticeTime);
-            }
-
-            calculateTotals();
-            updateCounts();
+  function loadSettings() {
+    const s = defaultSettings();
+    const saved = store.get('foosSettingsV2', null);
+    if (saved) {
+      ROD_ORDER.forEach(r => {
+        if (saved.enabled && r in saved.enabled) s.enabled[r] = !!saved.enabled[r];
+        if (saved.options && Array.isArray(saved.options[r])) {
+          const valid = saved.options[r].filter(v => RODS[r].options.some(o => o.v === v));
+          if (valid.length) s.options[r] = valid;
         }
+        if (saved.limit && saved.limit[r]) s.limit[r] = clamp(saved.limit[r], MIN_LIMIT, MAX_LIMIT);
+        if (saved.earliest && saved.earliest[r]) s.earliest[r] = saved.earliest[r];
+      });
+      if (saved.buffer) s.buffer = saved.buffer;
+      if (saved.voiceName) s.voiceName = saved.voiceName;
+    } else {
+      // Migrate settings from version 1
+      const oldPassMode = store.get('passMode', null);
+      if (oldPassMode !== null) s.enabled.rod5 = !!oldPassMode;
+      const oldPass = store.get('passOptions', null);
+      if (Array.isArray(oldPass) && oldPass.length) s.options.rod5 = oldPass;
+      const oldLanes = store.get('shotLanes', null);
+      if (Array.isArray(oldLanes) && oldLanes.length) s.options.rod3 = oldLanes;
+      const oldBuf = localStorage.getItem('bufferTime');
+      if (oldBuf) s.buffer = parseInt(oldBuf, 10) || 5;
+    }
+    ROD_ORDER.forEach(r => { s.earliest[r] = clamp(s.earliest[r], 1, s.limit[r] - 1); });
+    if (!ROD_ORDER.some(r => s.enabled[r])) s.enabled.rod3 = true;
+    return s;
+  }
 
-        // Calculate totals from stats
-        function calculateTotals() {
-            passMakes = 0;
-            passMisses = 0;
-            shotMakes = 0;
-            shotMisses = 0;
-            for (let date in passStats) {
-                for (let option in passStats[date]) {
-                    passMakes += passStats[date][option].makes;
-                    passMisses += passStats[date][option].misses;
-                }
-            }
-            for (let date in shotStats) {
-                for (let lane in shotStats[date]) {
-                    shotMakes += shotStats[date][lane].makes;
-                    shotMisses += shotStats[date][lane].misses;
-                }
-            }
+  let settings = loadSettings();
+  const saveSettings = () => store.set('foosSettingsV2', settings);
+
+  // Stats: { statsKey: { 'YYYY-MM-DD': { option: {makes, misses} } } }
+  const stats = {};
+  ROD_ORDER.forEach(r => { stats[RODS[r].statsKey] = store.get(RODS[r].statsKey, {}); });
+  let practiceTime = store.get('practiceTime', {});
+  const saveStats = () => {
+    ROD_ORDER.forEach(r => store.set(RODS[r].statsKey, stats[RODS[r].statsKey]));
+    store.set('practiceTime', practiceTime);
+  };
+
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || lo)); }
+  function randInt(lo, hi) { return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
+  function todayKey() {
+    const d = new Date(); // local date, so the day rolls over at your midnight
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // ---------- Elements ----------
+  const $ = id => document.getElementById(id);
+  const statusEl = $('status'), timerEl = $('timer'), callEl = $('call'), barEl = $('bar'), barFill = $('barFill');
+  const countsEl = $('counts'), seqEl = $('seq');
+  const startBtn = $('startBtn'), resetBtn = $('resetBtn'), makeBtn = $('makeBtn'), missBtn = $('missBtn');
+  const bufferSelect = $('bufferSelect'), voiceSelect = $('voiceSelect');
+  const micStatus = $('micStatus');
+
+  // ---------- Settings UI ----------
+  function renderSettings() {
+    const wrap = $('rodSettings');
+    wrap.innerHTML = '';
+    ROD_ORDER.forEach(r => {
+      const cfg = RODS[r];
+      const card = document.createElement('div');
+      card.className = 'rodcard' + (settings.enabled[r] ? '' : ' disabled');
+      card.innerHTML = `
+        <div class="rodhead">
+          <div><div class="t">${cfg.name}</div><div class="s">${cfg.sub}</div></div>
+          <label class="switch"><input type="checkbox" ${settings.enabled[r] ? 'checked' : ''}><span></span></label>
+        </div>
+        <div class="rodbody">
+          <div class="chips"></div>
+          <div class="slider">
+            <label>Possession time <b class="limitVal">${settings.limit[r]}s</b></label>
+            <input type="range" class="limit" min="${MIN_LIMIT}" max="${MAX_LIMIT}" step="1" value="${settings.limit[r]}">
+          </div>
+          <div class="slider">
+            <label>Earliest call <b class="earlyVal">${settings.earliest[r]}s</b></label>
+            <input type="range" class="early" min="1" max="${settings.limit[r] - 1}" step="1" value="${settings.earliest[r]}">
+          </div>
+        </div>`;
+
+      const toggle = card.querySelector('.switch input');
+      toggle.addEventListener('change', () => {
+        if (!toggle.checked && ROD_ORDER.filter(x => settings.enabled[x]).length === 1) {
+          toggle.checked = true; // keep at least one rod in the drill
+          flash('At least one rod must stay on');
+          return;
         }
+        settings.enabled[r] = toggle.checked;
+        card.classList.toggle('disabled', !toggle.checked);
+        saveSettings(); renderSeq();
+      });
 
-        // Save settings to localStorage
-        function saveSettings() {
-            localStorage.setItem('passMode', JSON.stringify(passModeCheckbox.checked));
-            const selectedPass = Array.from(passSelect.selectedOptions).map(option => option.value);
-            localStorage.setItem('passOptions', JSON.stringify(selectedPass));
-            const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
-            localStorage.setItem('shotLanes', JSON.stringify(selectedLanes));
-            localStorage.setItem('bufferTime', bufferSelect.value);
-            localStorage.setItem('voice', voiceSelect.value);
-        }
-
-        // Save stats and practice time to localStorage
-        function saveData() {
-            localStorage.setItem('passStats', JSON.stringify(passStats));
-            localStorage.setItem('shotStats', JSON.stringify(shotStats));
-            localStorage.setItem('practiceTime', JSON.stringify(practiceTime));
-        }
-
-        // Get today's date key
-        function getTodayKey() {
-            const today = new Date();
-            return today.toISOString().split('T')[0]; // YYYY-MM-DD
-        }
-
-        // Initialize daily stats if not exist
-        function initDailyStats() {
-            const today = getTodayKey();
-            if (!passStats[today]) {
-                passStats[today] = {};
-                allPassOptions.forEach(option => {
-                    passStats[today][option] = {makes: 0, misses: 0};
-                });
-            }
-            if (!shotStats[today]) {
-                shotStats[today] = {};
-                allShotNumbers.forEach(lane => {
-                    shotStats[today][lane] = {makes: 0, misses: 0};
-                });
-            }
-            if (!practiceTime[today]) {
-                practiceTime[today] = 0;
-            }
-            saveData();
-        }
-
-        // Start practice timer
-        function startPracticeTimer() {
-            if (!practiceStartTime) {
-                practiceStartTime = Date.now();
-            }
-            if (!practiceTimerInterval) {
-                practiceTimerInterval = setInterval(() => {
-                    const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
-                    practiceTime[getTodayKey()] += elapsed;
-                    practiceStartTime = Date.now();
-                    saveData();
-                    updateCounts();
-                }, 1000); // Update every second
-            }
-        }
-
-        // Stop practice timer
-        function stopPracticeTimer() {
-            if (practiceTimerInterval) {
-                clearInterval(practiceTimerInterval);
-                practiceTimerInterval = null;
-            }
-            if (practiceStartTime) {
-                const elapsed = Math.floor((Date.now() - practiceStartTime) / 1000);
-                practiceTime[getTodayKey()] += elapsed;
-                practiceStartTime = null;
-                saveData();
-                updateCounts();
-            }
-        }
-
-        // Check if speech is supported
-        if (!('speechSynthesis' in window)) {
-            alert('Your browser does not support text-to-speech. Try Chrome or another browser.');
-        }
-
-        // Show/hide pass options and enforce at least one selection
-        passModeCheckbox.addEventListener('change', () => {
-            passToggle.style.display = passModeCheckbox.checked ? 'block' : 'none';
-            if (passModeCheckbox.checked) {
-                loadVoices(); // Re-load and set default voice
-                validatePassOptions();
-            }
-            saveSettings();
+      const chips = card.querySelector('.chips');
+      cfg.options.forEach(o => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip' + (settings.options[r].includes(o.v) ? ' sel' : '');
+        b.textContent = o.label;
+        b.addEventListener('click', () => {
+          const sel = settings.options[r];
+          if (sel.includes(o.v)) {
+            if (sel.length === 1) { flash('Keep at least one option'); return; }
+            settings.options[r] = sel.filter(v => v !== o.v);
+          } else {
+            settings.options[r] = cfg.options.map(x => x.v).filter(v => v === o.v || sel.includes(v));
+          }
+          b.classList.toggle('sel');
+          saveSettings();
         });
+        chips.appendChild(b);
+      });
 
-        function validatePassOptions() {
-            const selectedOptions = Array.from(passSelect.selectedOptions).map(option => option.value);
-            if (selectedOptions.length === 0) {
-                alert('Please select at least one pass option.');
-                passSelect.options[0].selected = true; // Default to Wall
-            }
+      const limit = card.querySelector('.limit'), early = card.querySelector('.early');
+      const limitVal = card.querySelector('.limitVal'), earlyVal = card.querySelector('.earlyVal');
+      limit.addEventListener('input', () => {
+        settings.limit[r] = parseInt(limit.value, 10);
+        limitVal.textContent = settings.limit[r] + 's';
+        early.max = settings.limit[r] - 1;
+        if (settings.earliest[r] > settings.limit[r] - 1) {
+          settings.earliest[r] = settings.limit[r] - 1;
+          early.value = settings.earliest[r];
+          earlyVal.textContent = settings.earliest[r] + 's';
         }
+        saveSettings();
+      });
+      early.addEventListener('input', () => {
+        settings.earliest[r] = parseInt(early.value, 10);
+        earlyVal.textContent = settings.earliest[r] + 's';
+        saveSettings();
+      });
 
-        function validateShotLanes() {
-            const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
-            if (selectedLanes.length === 0) {
-                alert('Please select at least one shot lane.');
-                shotLanesSelect.options[0].selected = true; // Default to 1
-            }
-        }
+      wrap.appendChild(card);
+    });
+  }
 
-        // Enforce at least one option for pass and shot lanes
-        passSelect.addEventListener('change', () => {
-            validatePassOptions();
-            saveSettings();
-        });
-        shotLanesSelect.addEventListener('change', () => {
-            validateShotLanes();
-            saveSettings();
-        });
-        bufferSelect.addEventListener('change', saveSettings);
-        voiceSelect.addEventListener('change', saveSettings);
+  function renderSeq(activeRod) {
+    seqEl.innerHTML = '';
+    ROD_ORDER.forEach((r, i) => {
+      if (i > 0) { const a = document.createElement('span'); a.className = 'arrow'; a.textContent = '→'; seqEl.appendChild(a); }
+      const d = document.createElement('div');
+      d.className = 'rod ' + (settings.enabled[r] ? 'on' : 'off') + (activeRod === r ? ' active' : '');
+      d.textContent = RODS[r].short + '-Rod';
+      seqEl.appendChild(d);
+    });
+  }
 
-        // Load and populate English voices
-        let voices = [];
-        function loadVoices() {
-            voices = speechSynthesis.getVoices().filter(voice => voice.lang.startsWith('en-'));
-            voiceSelect.innerHTML = ''; // Clear options
-            if (voices.length === 0) {
-                const option = document.createElement('option');
-                option.textContent = 'No English voices available';
-                voiceSelect.appendChild(option);
-                console.log('No English voices available');
-            } else {
-                voices.forEach((voice, index) => {
-                    const option = document.createElement('option');
-                    option.value = index;
-                    option.textContent = `${voice.name} (${voice.lang})`;
-                    voiceSelect.appendChild(option);
-                });
-                // Default to Samantha (en-US) if available, else first en-US, else first
-                const samanthaIndex = voices.findIndex(voice => voice.name === 'Samantha' && voice.lang === 'en-US');
-                const defaultIndex = samanthaIndex !== -1 ? samanthaIndex : voices.findIndex(voice => voice.lang === 'en-US');
-                voiceSelect.value = defaultIndex !== -1 ? defaultIndex : 0;
-                console.log('Voices loaded:', voices.map(v => `${v.name} (${v.lang})`));
-            }
-        }
+  for (let i = 1; i <= 10; i++) {
+    const o = document.createElement('option'); o.value = i; o.textContent = i + ' seconds'; bufferSelect.appendChild(o);
+  }
+  bufferSelect.value = settings.buffer;
+  bufferSelect.addEventListener('change', () => { settings.buffer = parseInt(bufferSelect.value, 10); saveSettings(); });
 
-        speechSynthesis.onvoiceschanged = () => {
-            loadVoices();
-        };
-        loadVoices(); // Initial load
+  $('defaultsBtn').addEventListener('click', () => {
+    ROD_ORDER.forEach(r => { settings.limit[r] = RODS[r].defLimit; settings.earliest[r] = RODS[r].defEarliest; });
+    saveSettings(); renderSettings();
+  });
 
-        function speak(text) {
-            if ('speechSynthesis' in window) {
-                // Pause recognition if active
-                let wasListening = false;
-                if (recognition && !recognition.stopped) {
-                    wasListening = true;
-                    try {
-                        recognition.stop();
-                    } catch (e) {
-                        console.log('Error stopping recognition:', e);
-                    }
-                }
+  let flashTimer = null;
+  function flash(msg) {
+    const prev = micStatus.dataset.base || micStatus.textContent;
+    micStatus.dataset.base = prev;
+    micStatus.textContent = msg;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { micStatus.textContent = micStatus.dataset.base; delete micStatus.dataset.base; }, 1800);
+  }
 
-                speechSynthesis.cancel(); // Cancel previous
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.volume = 1;
-                utterance.rate = 1;
-                utterance.pitch = 1;
-                // Use selected voice
-                const selectedIndex = parseInt(voiceSelect.value, 10);
-                if (!isNaN(selectedIndex) && voices[selectedIndex]) {
-                    utterance.voice = voices[selectedIndex];
-                    console.log(`Speaking "${text}" with voice: ${voices[selectedIndex].name}`);
-                } else {
-                    console.log(`No valid voice selected for "${text}", using default`);
-                }
-                utterance.onerror = (e) => {
-                    console.error('Speech synthesis error:', e);
-                    // Attempt to resume recognition on error
-                    if (wasListening && recognition && !recognition.stopped) {
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.log('Restart recognition error after speech error:', e);
-                        }
-                    }
-                };
-                utterance.onend = () => {
-                    console.log(`Finished speaking "${text}"`);
-                    if (wasListening && recognition && !recognition.stopped) {
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.log('Restart recognition error after speak:', e);
-                        }
-                    }
-                };
-                try {
-                    speechSynthesis.speak(utterance);
-                } catch (e) {
-                    console.error('Error initiating speech:', e);
-                }
-            } else {
-                console.log('Speech synthesis not supported');
-            }
-        }
+  // ---------- Speech synthesis ----------
+  let voices = [];
+  function loadVoices() {
+    if (!('speechSynthesis' in window)) return;
+    voices = speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    voiceSelect.innerHTML = '';
+    if (!voices.length) {
+      const o = document.createElement('option'); o.textContent = 'Default voice'; o.value = ''; voiceSelect.appendChild(o);
+      return;
+    }
+    voices.forEach(v => {
+      const o = document.createElement('option'); o.value = v.name; o.textContent = `${v.name} (${v.lang})`; voiceSelect.appendChild(o);
+    });
+    const pick = voices.find(v => v.name === settings.voiceName)
+      || voices.find(v => v.name === 'Samantha' && v.lang === 'en-US')
+      || voices.find(v => v.lang === 'en-US')
+      || voices[0];
+    voiceSelect.value = pick.name;
+  }
+  if ('speechSynthesis' in window) {
+    speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+  }
+  voiceSelect.addEventListener('change', () => { settings.voiceName = voiceSelect.value; saveSettings(); });
 
-        // Test speech button
-        testSpeechBtn.addEventListener('click', () => {
-            speak('test');
-        });
+  function speak(text) {
+    if (!('speechSynthesis' in window)) return;
+    pauseListening();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1; u.pitch = 1; u.volume = 1;
+    const v = voices.find(x => x.name === voiceSelect.value);
+    if (v) u.voice = v;
+    u.onend = u.onerror = resumeListening;
+    try { speechSynthesis.speak(u); } catch (e) { resumeListening(); }
+  }
+  $('testSpeechBtn').addEventListener('click', () => speak('lane two'));
 
-        // Handle visibility for resuming speech and wake lock
-        document.addEventListener('visibilitychange', async () => {
-            if (!document.hidden && 'speechSynthesis' in window) {
-                speechSynthesis.resume();
-                console.log('Speech synthesis resumed due to visibility change');
-            }
-            if (!document.hidden && isRunning && 'wakeLock' in navigator) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Wake lock re-acquired');
-                } catch (e) {
-                    console.log('Wake lock request error:', e);
-                }
-            }
-            if (document.hidden && isRunning) {
-                stopPracticeTimer(); // Save time on background
-            } else if (!document.hidden && isRunning) {
-                startPracticeTimer(); // Resume timer on foreground
-            }
-        });
+  // ---------- Speech recognition ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null, micWanted = false, micPaused = false, micBlocked = false;
+  if (SR) {
+    recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.onresult = (event) => {
+      const said = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
+      const words = said.split(/\s+/);
+      const has = w => words.includes(w);
+      if (has('start') && !isRunning) startDrill();
+      else if (has('reset') || has('stop')) resetDrill();
+      else if (has('make') || has('made')) recordResult('make');
+      else if (has('miss') || has('missed')) recordResult('miss');
+    };
+    recognition.onend = () => {
+      if (micWanted && !micPaused && !micBlocked) { try { recognition.start(); } catch (e) {} }
+    };
+    recognition.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        micBlocked = true;
+        micStatus.classList.remove('on');
+        micStatus.textContent = 'Microphone blocked — use the Make / Miss buttons';
+      }
+    };
+  } else {
+    micStatus.textContent = 'Voice commands not supported in this browser — use the buttons';
+  }
+  function startListening() {
+    if (!recognition || micBlocked) return;
+    micWanted = true;
+    try { recognition.start(); } catch (e) {}
+    micStatus.classList.add('on');
+    micStatus.textContent = 'Listening: “make”, “miss”, “reset”';
+  }
+  function pauseListening() {
+    if (!recognition || !micWanted) return;
+    micPaused = true;
+    try { recognition.stop(); } catch (e) {}
+  }
+  function resumeListening() {
+    if (!recognition || !micWanted || micBlocked) return;
+    micPaused = false;
+    try { recognition.start(); } catch (e) {}
+  }
 
-        // Handle unload for saving practice time
-        window.addEventListener('unload', () => {
-            stopPracticeTimer();
-        });
+  // ---------- Wake lock ----------
+  let wakeLock = null;
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+  }
 
-        async function requestWakeLock() {
-            if ('wakeLock' in navigator) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Wake lock acquired');
-                } catch (e) {
-                    console.log('Wake lock request error:', e);
-                }
-            }
-        }
+  // ---------- Practice time ----------
+  let practiceStart = null, practiceInterval = null;
+  function flushPractice() {
+    if (!practiceStart) return;
+    const now = Date.now();
+    const secs = Math.floor((now - practiceStart) / 1000);
+    if (secs > 0) {
+      const k = todayKey();
+      practiceTime[k] = (practiceTime[k] || 0) + secs;
+      practiceStart += secs * 1000;
+      saveStats();
+    }
+  }
+  function startPractice() {
+    if (!practiceStart) practiceStart = Date.now();
+    if (!practiceInterval) practiceInterval = setInterval(() => { flushPractice(); renderStats(); }, 5000);
+  }
+  function stopPractice() {
+    flushPractice();
+    practiceStart = null;
+    clearInterval(practiceInterval); practiceInterval = null;
+    renderStats();
+  }
 
-        function releaseWakeLock() {
-            if (wakeLock) {
-                wakeLock.release().then(() => {
-                    wakeLock = null;
-                    console.log('Wake lock released');
-                }).catch(e => {
-                    console.log('Wake lock release error:', e);
-                });
-            }
-        }
+  // ---------- Drill engine ----------
+  let isRunning = false;
+  let timers = [];
+  let tickId = null;
+  let sequence = [];
+  let lastCall = null; // { rod, opt, recorded }
+  let session = { makes: 0, misses: 0 };
 
-        function startCycle() {
-            lastPassCall = null;
-            lastCall = null;
-            currentPhase = passModeCheckbox.checked ? 'pass' : 'shot';
-            if (passModeCheckbox.checked) {
-                startPass();
-            } else {
-                startShot();
-            }
-        }
+  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  function clearTimers() {
+    timers.forEach(clearTimeout); timers = [];
+    clearInterval(tickId); tickId = null;
+  }
 
-        function startPass() {
-            statusEl.textContent = 'Pass Set!';
-            speak('set');
+  // Countdown display driven by wall-clock time (stays accurate)
+  function runCountdown(totalSec, mode) {
+    clearInterval(tickId);
+    const start = Date.now(), end = start + totalSec * 1000;
+    barEl.className = 'bar' + (mode === 'buffer' ? ' buffer' : '');
+    timerEl.classList.remove('small');
+    const tick = () => {
+      const left = Math.max(0, end - Date.now());
+      timerEl.textContent = Math.ceil(left / 1000);
+      barFill.style.width = (left / (totalSec * 1000) * 100) + '%';
+      if (mode !== 'buffer') barEl.classList.toggle('late', left < 3000);
+      if (left <= 0) { clearInterval(tickId); tickId = null; }
+    };
+    tick();
+    tickId = setInterval(tick, 100);
+  }
 
-            // Choose random time between 4 and 10 seconds for the pass call
-            const passDelay = Math.floor(Math.random() * (maxPassCountdown - minPassDelay + 1)) + minPassDelay;
+  function startDrill() {
+    if (isRunning) return;
+    isRunning = true;
+    startBtn.disabled = true;
+    resetBtn.disabled = false;
+    $('settingsPanel').open = false;
+    startListening();
+    startPractice();
+    startCycle();          // speak first, inside the tap, so iOS allows audio
+    requestWakeLock();
+  }
 
-            // Start visual 10s countdown
-            let remainingSeconds = maxPassCountdown;
-            timerEl.textContent = remainingSeconds;
+  function resetDrill() {
+    clearTimers();
+    isRunning = false;
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    releaseWakeLock();
+    stopPractice();
+    lastCall = null;
+    startBtn.disabled = false;
+    resetBtn.disabled = true;
+    statusEl.textContent = 'Ready';
+    timerEl.textContent = 'Press Start';
+    timerEl.classList.add('small');
+    callEl.textContent = '';
+    barFill.style.width = '0%';
+    renderSeq();
+  }
 
-            const countdownInterval = setInterval(() => {
-                remainingSeconds -= 1;
-                timerEl.textContent = remainingSeconds;
-                if (remainingSeconds < 0) {
-                    clearInterval(countdownInterval);
-                    pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
-                }
-            }, 1000);
-            pendingTimers.push(countdownInterval);
+  function startCycle() {
+    if (!isRunning) return;
+    clearTimers();
+    sequence = ROD_ORDER.filter(r => settings.enabled[r]);
+    lastCall = null;
+    runPhase(0);
+  }
 
-            // Set timeout for the random pass call
-            const passTimeout = setTimeout(() => {
-                clearInterval(countdownInterval);
-                pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
-                pendingTimers = pendingTimers.filter(id => id !== passTimeout);
-                // Choose random option from selected passes
-                const selectedPassOptions = Array.from(passSelect.selectedOptions).map(option => option.value);
-                const randomIndex = Math.floor(Math.random() * selectedPassOptions.length);
-                const passCall = selectedPassOptions[randomIndex];
-                lastPassCall = passCall;
-                lastCall = passCall; // For stats
-                statusEl.textContent = `Pass: ${passCall}!`;
-                speak(passCall);
-                // If pass is "shoot", treat as pass for stats, but skip shot
-                if (passCall === 'shoot') {
-                    // Wait 1 second then start buffer if still running
-                    const delayToBuffer = setTimeout(() => {
-                        pendingTimers = pendingTimers.filter(id => id !== delayToBuffer);
-                        if (isRunning) {
-                            startBuffer();
-                        }
-                    }, 1000);
-                    pendingTimers.push(delayToBuffer);
-                } else {
-                    // Wait 1 second then start shot if still running
-                    const delayToShot = setTimeout(() => {
-                        pendingTimers = pendingTimers.filter(id => id !== delayToShot);
-                        if (isRunning) {
-                            startShot();
-                        }
-                    }, 1000);
-                    pendingTimers.push(delayToShot);
-                }
-            }, passDelay * 1000);
-            pendingTimers.push(passTimeout);
-        }
+  function runPhase(i) {
+    if (!isRunning) return;
+    if (i >= sequence.length) { startBuffer(); return; }
+    const rod = sequence[i], cfg = RODS[rod];
+    const limit = settings.limit[rod];
+    const earliest = clamp(settings.earliest[rod], 1, limit - 1);
+    const callSec = randInt(earliest, Math.max(earliest, limit - 1));
 
-        function startShot() {
-            lastPassCall = null; // Reset for normal shot
-            statusEl.textContent = 'Shot Set!';
-            speak('set');
+    renderSeq(rod);
+    statusEl.textContent = `${cfg.name} · Set`;
+    callEl.textContent = '';
+    speak('set');
+    runCountdown(limit, 'possession');
 
-            // Choose random time between 5 and 15 seconds for the shot
-            const shotDelay = Math.floor(Math.random() * (maxShotCountdown - minShotDelay + 1)) + minShotDelay;
+    later(() => {
+      const opts = settings.options[rod];
+      const optV = opts[Math.floor(Math.random() * opts.length)];
+      const opt = cfg.options.find(o => o.v === optV);
+      lastCall = { rod, opt: optV, recorded: false };
+      statusEl.textContent = cfg.name;
+      callEl.textContent = cfg.kind === 'shot' ? `Shoot ${opt.v}` : opt.label;
+      speak(opt.say);
 
-            // Start visual 15s countdown
-            let remainingSeconds = maxShotCountdown;
-            timerEl.textContent = remainingSeconds;
+      const skipToBuffer = rod === 'rod5' && optV === 'shoot';
+      later(() => { skipToBuffer ? startBuffer() : runPhase(i + 1); }, 1000);
+    }, callSec * 1000);
+  }
 
-            const countdownInterval = setInterval(() => {
-                remainingSeconds -= 1;
-                timerEl.textContent = remainingSeconds;
-                if (remainingSeconds < 0) {
-                    clearInterval(countdownInterval);
-                    pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
-                }
-            }, 1000);
-            pendingTimers.push(countdownInterval);
+  function startBuffer() {
+    if (!isRunning) return;
+    clearTimers();
+    renderSeq();
+    statusEl.textContent = 'Reset the ball';
+    const secs = settings.buffer;
+    runCountdown(secs, 'buffer');
+    later(startCycle, secs * 1000);
+  }
 
-            // Set timeout for the random shot
-            const shotTimeout = setTimeout(() => {
-                clearInterval(countdownInterval);
-                pendingTimers = pendingTimers.filter(id => id !== countdownInterval);
-                pendingTimers = pendingTimers.filter(id => id !== shotTimeout);
-                // Choose random number from selected lanes
-                const selectedLanes = Array.from(shotLanesSelect.selectedOptions).map(option => option.value);
-                const randomIndex = Math.floor(Math.random() * selectedLanes.length);
-                const shot = selectedLanes[randomIndex];
-                lastCall = shot; // For stats
-                statusEl.textContent = `Shoot ${shot}!`;
-                speak(shot);
-                // Start buffer if still running
-                if (isRunning) {
-                    startBuffer();
-                }
-            }, shotDelay * 1000);
-            pendingTimers.push(shotTimeout);
-        }
+  function recordResult(type) {
+    if (!lastCall || lastCall.recorded) { flash('No call to score yet'); return; }
+    const { rod, opt } = lastCall;
+    const key = RODS[rod].statsKey, day = todayKey();
+    stats[key][day] = stats[key][day] || {};
+    stats[key][day][opt] = stats[key][day][opt] || { makes: 0, misses: 0 };
+    stats[key][day][opt][type === 'make' ? 'makes' : 'misses']++;
+    lastCall.recorded = true;
+    session[type === 'make' ? 'makes' : 'misses']++;
+    saveStats();
+    renderCounts();
+    renderStats();
+    flash(`${type === 'make' ? 'Make' : 'Miss'} logged: ${RODS[rod].name} – ${RODS[rod].options.find(o => o.v === opt).label}`);
 
-        function startBuffer() {
-            const bufferTime = parseInt(bufferSelect.value, 10); // Get user-selected buffer time
-            let bufferSeconds = bufferTime;
-            statusEl.textContent = 'Buffer';
-            timerEl.textContent = bufferSeconds;
+    // A missed pass ends the rep (unless the 5-rod call was "shoot"): reset the ball and go again
+    if (type === 'miss' && isRunning && RODS[rod].kind === 'pass' && opt !== 'shoot') {
+      callEl.textContent = '';
+      startBuffer();
+    }
+  }
 
-            const bufferInterval = setInterval(() => {
-                bufferSeconds -= 1;
-                timerEl.textContent = bufferSeconds;
-                if (bufferSeconds <= 0) {
-                    clearInterval(bufferInterval);
-                    pendingTimers = pendingTimers.filter(id => id !== bufferInterval);
-                    if (isRunning) {
-                        startCycle();
-                    }
-                }
-            }, 1000);
-            pendingTimers.push(bufferInterval);
-        }
+  startBtn.addEventListener('click', startDrill);
+  resetBtn.addEventListener('click', resetDrill);
+  makeBtn.addEventListener('click', () => recordResult('make'));
+  missBtn.addEventListener('click', () => recordResult('miss'));
 
-        function handleMakeMiss(transcript) {
-            if (lastCall && currentPhase) {
-                const today = getTodayKey();
-                if (lastPassCall) { // Pass phase, including 'shoot'
-                    passStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
-                    if (transcript === 'make') {
-                        passMakes++;
-                    } else {
-                        passMisses++;
-                        if (lastPassCall !== 'shoot') {
-                            resetCycle();
-                            startCycle(); // Restart immediately
-                            return;
-                        }
-                    }
-                } else { // Normal shot phase
-                    shotStats[today][lastCall][transcript === 'make' ? 'makes' : 'misses']++;
-                    if (transcript === 'make') {
-                        shotMakes++;
-                    } else {
-                        shotMisses++;
-                    }
-                }
-                saveData();
-                updateCounts();
-            }
-        }
+  document.addEventListener('visibilitychange', () => {
+    if (!isRunning) return;
+    if (document.hidden) { flushPractice(); practiceStart = null; }
+    else { practiceStart = Date.now(); requestWakeLock(); if ('speechSynthesis' in window) speechSynthesis.resume(); }
+  });
+  window.addEventListener('pagehide', () => { if (isRunning) flushPractice(); });
 
-        function updateCounts() {
-            const totalMakes = passMakes + shotMakes;
-            const totalMisses = passMisses + shotMisses;
-            countsEl.textContent = `Made: ${totalMakes} | Miss: ${totalMisses}`;
+  // ---------- Stats display ----------
+  function renderCounts() {
+    countsEl.innerHTML = `Session — Made <b>${session.makes}</b> · Miss <b>${session.misses}</b>`;
+  }
 
-            const today = getTodayKey();
-            let passStatsText = 'Pass Stats:<br>';
-            for (let option in passStats[today]) {
-                const stats = passStats[today][option];
-                const accuracy = stats.makes + stats.misses > 0 ? ((stats.makes / (stats.makes + stats.misses)) * 100).toFixed(2) : 0;
-                passStatsText += `${option}: Makes ${stats.makes} | Misses ${stats.misses} | Accuracy ${accuracy}%<br>`;
-            }
-            passStatsEl.innerHTML = passStatsText;
+  function renderStats() {
+    const day = todayKey();
+    const secs = practiceTime[day] || 0;
+    $('practiceTime').textContent = `Practice time today: ${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
 
-            let shotStatsText = 'Shot Stats:<br>';
-            for (let lane in shotStats[today]) {
-                const stats = shotStats[today][lane];
-                const accuracy = stats.makes + stats.misses > 0 ? ((stats.makes / (stats.makes + stats.misses)) * 100).toFixed(2) : 0;
-                shotStatsText += `Lane ${lane}: Makes ${stats.makes} | Misses ${stats.misses} | Accuracy ${accuracy}%<br>`;
-            }
-            shotStatsEl.innerHTML = shotStatsText;
+    let html = '';
+    let allM = 0, allX = 0;
+    ROD_ORDER.forEach(r => {
+      const cfg = RODS[r], byDay = stats[cfg.statsKey];
+      for (const d in byDay) for (const o in byDay[d]) { allM += byDay[d][o].makes || 0; allX += byDay[d][o].misses || 0; }
+      const today = byDay[day] || {};
+      const rows = cfg.options.map(o => {
+        const s = today[o.v] || { makes: 0, misses: 0 };
+        const n = s.makes + s.misses;
+        return `<tr><td>${o.label}</td><td>${s.makes}</td><td>${s.misses}</td><td>${n ? Math.round(s.makes / n * 100) + '%' : '–'}</td></tr>`;
+      }).join('');
+      html += `<h4>${cfg.name} — today</h4><table><tr><th>Call</th><th>Make</th><th>Miss</th><th>%</th></tr>${rows}</table>`;
+    });
+    $('statsTables').innerHTML = html;
+    const tot = allM + allX;
+    $('allTime').textContent = `All time: ${allM} made · ${allX} missed${tot ? ` · ${Math.round(allM / tot * 100)}%` : ''}`;
+  }
 
-            const totalSeconds = practiceTime[today] || 0;
-            const hours = Math.floor(totalSeconds / 3600);
-            const minutes = Math.floor((totalSeconds % 3600) / 60);
-            totalPracticeEl.textContent = `Total Practice Time: ${hours} hours ${minutes} minutes`;
-        }
-
-        function resetCycle() {
-            stopPracticeTimer();
-            isRunning = false;
-            // Clear all pending timers immediately
-            while (pendingTimers.length > 0) {
-                const id = pendingTimers.pop();
-                clearInterval(id);
-                clearTimeout(id);
-            }
-            speechSynthesis.cancel(); // Stop any ongoing speech
-            releaseWakeLock(); // Release screen wake lock
-            currentPhase = null;
-            lastPassCall = null;
-            lastCall = null;
-            startBtn.disabled = false;
-            resetBtn.disabled = true;
-            statusEl.textContent = 'Foosball Timer';
-            timerEl.textContent = 'Press Start';
-        }
-
-        // Voice command setup
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition;
-        if (SpeechRecognition) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-                console.log('Heard voice command:', transcript);
-                if (transcript === 'start' && !isRunning) {
-                    startBtn.click(); // Simulate start
-                } else if (transcript === 'reset') {
-                    resetBtn.click(); // Simulate reset
-                } else if (transcript === 'make' || transcript === 'miss') {
-                    handleMakeMiss(transcript);
-                }
-            };
-
-            recognition.onend = () => {
-                // Restart for continuous listening
-                if (!recognition.stopped) {
-                    try {
-                        recognition.start();
-                        console.log('Speech recognition restarted');
-                    } catch (e) {
-                        console.log('Voice recognition restart error:', e);
-                    }
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.log('Voice recognition error:', event.error);
-                if (event.error === 'not-allowed' || event.error === 'permission-denied') {
-                    alert('Microphone permission denied. Voice commands disabled.');
-                    recognition.stopped = true;
-                }
-            };
-
-            // Start listening (may prompt for permission)
-            try {
-                recognition.start();
-                console.log('Speech recognition started');
-            } catch (e) {
-                console.log('Initial voice recognition start error:', e);
-            }
-        } else {
-            console.log('SpeechRecognition not supported in this browser.');
-        }
-
-        startBtn.addEventListener('click', async () => {
-            isRunning = true;
-            pendingTimers = []; // Reset on new start
-            startBtn.disabled = true;
-            resetBtn.disabled = false;
-            await requestWakeLock(); // Request screen wake lock
-            startPracticeTimer();
-            startCycle();
-        });
-        resetBtn.addEventListener('click', resetCycle);
-        testSpeechBtn.addEventListener('click', () => {
-            speak('test');
-        });
-
-        // Load settings and init stats
-        loadSettings();
-        initDailyStats();
-        updateCounts();
-    </script>
+  // ---------- Init ----------
+  renderSettings();
+  renderSeq();
+  renderCounts();
+  renderStats();
+})();
+</script>
 </body>
 </html>
