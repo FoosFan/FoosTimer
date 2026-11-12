@@ -130,7 +130,8 @@
     <button class="btn-make" id="makeBtn">Make</button>
     <button class="btn-miss" id="missBtn">Miss</button>
   </div>
-  <div id="micStatus">Voice commands: say “start”, “reset”, “make”, “miss”</div>
+  <div id="micStatus">Voice commands: say “start”, “reset”, “make” / “yes”, “miss” / “no”</div>
+  <div id="heard" class="hint" style="text-align:center;min-height:16px"></div>
 
   <details id="settingsPanel">
     <summary>Drill Settings</summary>
@@ -407,65 +408,109 @@
   }
   voiceSelect.addEventListener('change', () => { settings.voiceName = voiceSelect.value; saveSettings(); });
 
+  // The mic keeps listening while the timer talks: none of the spoken calls are command words,
+  // and stopping/restarting recognition around every "set" left gaps where "make"/"miss" were lost.
   function speak(text) {
     if (!('speechSynthesis' in window)) return;
-    pauseListening();
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1; u.pitch = 1; u.volume = 1;
     const v = voices.find(x => x.name === voiceSelect.value);
     if (v) u.voice = v;
-    u.onend = u.onerror = resumeListening;
-    try { speechSynthesis.speak(u); } catch (e) { resumeListening(); }
+    try { speechSynthesis.speak(u); } catch (e) {}
   }
   $('testSpeechBtn').addEventListener('click', () => speak('lane two'));
 
   // ---------- Speech recognition ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let recognition = null, micWanted = false, micPaused = false, micBlocked = false;
+  let recognition = null, micWanted = false, micBlocked = false, micLive = false, micStarting = false;
+  const heardEl = $('heard');
+
+  // Words the recogniser commonly returns for a quick shout of "make" / "miss" near a loud table.
+  // Exact words count anywhere in the phrase; sound-alikes only count when the phrase is 1–2 words.
+  const CMD = {
+    make:  { exact: ['make', 'made', 'makes', 'making', 'yes', 'yeah', 'yep', 'good', 'goal', 'score', 'scored'],
+             alike: ['mate', 'may', 'maid', 'mike', 'bake', 'take', 'cake', 'fake', 'lake', 'wake', 'mick', 'meg', 'mayk', 'mk'] },
+    miss:  { exact: ['miss', 'missed', 'misses', 'missing', 'no', 'nope', 'nah', 'bad'],
+             alike: ['mess', 'ms', 'mrs', 'mis', 'myth', 'kiss', 'this', 'bliss', 'piss', 'mist', 'mitch', 'nest', 'mix'] },
+    reset: { exact: ['reset', 'stop', 'restart'], alike: [] },
+    start: { exact: ['start', 'go'], alike: [] },
+  };
+
+  function matchCommand(phrase) {
+    const words = phrase.toLowerCase().replace(/[^a-z\s']/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+    const short = words.length <= 2;
+    for (const cmd of ['reset', 'start', 'make', 'miss']) {
+      if (words.some(w => CMD[cmd].exact.includes(w))) return cmd;
+    }
+    if (short) {
+      for (const cmd of ['make', 'miss']) {
+        if (words.some(w => CMD[cmd].alike.includes(w))) return cmd;
+      }
+    }
+    return null;
+  }
+
+  // Each recognised phrase is acted on once, as soon as an interim guess matches (faster than waiting for the final)
+  const handledResults = new Set();
+  let sessionId = 0;
+
   if (SR) {
     recognition = new SR();
     recognition.continuous = true;
-    recognition.interimResults = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 5;
     recognition.lang = 'en-US';
+
+    recognition.onstart = () => { micLive = true; micStarting = false; };
     recognition.onresult = (event) => {
-      const said = event.results[event.results.length - 1][0].transcript.trim().toLowerCase();
-      const words = said.split(/\s+/);
-      const has = w => words.includes(w);
-      if (has('start') && !isRunning) startDrill();
-      else if (has('reset') || has('stop')) resetDrill();
-      else if (has('make') || has('made')) recordResult('make');
-      else if (has('miss') || has('missed')) recordResult('miss');
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const key = sessionId + ':' + i;
+        if (handledResults.has(key)) continue;
+        const res = event.results[i];
+        let cmd = null, heardText = res[0].transcript.trim();
+        for (let a = 0; a < res.length && !cmd; a++) {
+          cmd = matchCommand(res[a].transcript);
+          if (cmd) heardText = res[a].transcript.trim();
+        }
+        if (heardEl) heardEl.textContent = `Heard: “${heardText}”${cmd ? ' → ' + cmd : ''}`;
+        if (!cmd) continue;
+        handledResults.add(key);
+        if (cmd === 'start') { if (!isRunning) startDrill(); }
+        else if (cmd === 'reset') { if (isRunning) resetDrill(); }
+        else recordResult(cmd);
+      }
     };
     recognition.onend = () => {
-      if (micWanted && !micPaused && !micBlocked) { try { recognition.start(); } catch (e) {} }
+      micLive = false; micStarting = false;
+      sessionId++; handledResults.clear();
+      if (micWanted && !micBlocked) restartMic();
     };
     recognition.onerror = (e) => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         micBlocked = true;
         micStatus.classList.remove('on');
-        micStatus.textContent = 'Microphone blocked — use the Make / Miss buttons';
+        micStatus.textContent = 'Microphone blocked — allow mic access, or use the Make / Miss buttons';
       }
     };
+    // Watchdog: browsers end recognition after silence or ~60s; make sure it always comes back
+    setInterval(() => { if (micWanted && !micBlocked && !micLive && !micStarting) restartMic(); }, 1500);
   } else {
-    micStatus.textContent = 'Voice commands not supported in this browser — use the buttons';
+    micStatus.textContent = 'Voice commands not supported in this browser (use Chrome) — use the buttons';
+  }
+
+  function restartMic() {
+    if (micStarting || micLive) return;
+    micStarting = true;
+    try { recognition.start(); } catch (e) { micStarting = false; }
   }
   function startListening() {
     if (!recognition || micBlocked) return;
     micWanted = true;
-    try { recognition.start(); } catch (e) {}
+    restartMic();
     micStatus.classList.add('on');
-    micStatus.textContent = 'Listening: “make”, “miss”, “reset”';
-  }
-  function pauseListening() {
-    if (!recognition || !micWanted) return;
-    micPaused = true;
-    try { recognition.stop(); } catch (e) {}
-  }
-  function resumeListening() {
-    if (!recognition || !micWanted || micBlocked) return;
-    micPaused = false;
-    try { recognition.start(); } catch (e) {}
+    micStatus.textContent = 'Listening: “make” / “yes”, “miss” / “no”, “reset”';
   }
 
   // ---------- Wake lock ----------
