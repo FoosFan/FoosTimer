@@ -39,8 +39,10 @@
 
   /* Main display */
   .display { background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
-    padding: 18px 16px 20px; text-align: center; }
+    padding: 18px 16px 16px; text-align: center; }
+  .display.paused { border-color: var(--warn); }
   #status { font-size: 15px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); min-height: 20px; }
+  .display.paused #status { color: var(--warn); }
   #timer { font-size: 104px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; margin: 6px 0 4px; }
   #timer.small { font-size: 44px; padding: 30px 0 30px; }
   #call { font-size: 44px; font-weight: 900; color: var(--call); min-height: 54px; text-transform: uppercase; letter-spacing: .04em; }
@@ -48,18 +50,22 @@
   .bar > div { height: 100%; width: 0%; background: var(--accent); transition: width .1s linear; }
   .bar.late > div { background: var(--warn); }
   .bar.buffer > div { background: #5aa9ff; }
-  #counts { margin-top: 12px; font-size: 16px; color: var(--muted); }
+  #counts { margin-top: 12px; font-size: 16px; color: var(--muted); line-height: 1.5; }
   #counts b { color: var(--text); }
+  #counts .today { font-size: 13px; }
 
   /* Buttons */
   .row { display: flex; gap: 10px; margin-top: 12px; }
   button { font: inherit; border: none; border-radius: var(--radius); cursor: pointer; padding: 16px; font-weight: 700; font-size: 18px; flex: 1; }
   button:disabled { opacity: .35; cursor: default; }
   .btn-start { background: var(--accent); color: #062312; }
+  .btn-start.pause { background: var(--warn); color: #2b1b00; }
   .btn-reset { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .btn-stop { background: #3b2323; color: #ffd0d0; border: 1px solid #5a3434; }
   .btn-make { background: #1d4d33; color: #c9ffe0; font-size: 22px; padding: 22px; }
   .btn-miss { background: #4d1d1d; color: #ffd0d0; font-size: 22px; padding: 22px; }
   .btn-small { font-size: 14px; padding: 10px 12px; flex: none; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+  .btn-link { background: transparent; color: var(--accent); font-size: 14px; padding: 6px 10px; flex: none; text-decoration: underline; }
   #micStatus { text-align: center; font-size: 13px; color: var(--muted); margin-top: 10px; }
   #micStatus.on::before { content: "● "; color: var(--accent); }
 
@@ -100,11 +106,24 @@
   select { font: inherit; font-size: 15px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
     border-radius: 10px; padding: 8px; max-width: 65%; }
 
+  /* Stats */
+  .seg { display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; margin-bottom: 12px; }
+  .seg button { font-size: 14px; padding: 9px 6px; border-radius: 9px; background: transparent; color: var(--muted); }
+  .seg button.sel { background: var(--accent-dim); color: var(--text); }
+  .stathead { font-size: 15px; font-weight: 700; }
+  .statsub { font-size: 13px; color: var(--muted); margin: 2px 0 10px; }
+  .bigtotal { font-size: 15px; margin-bottom: 10px; }
+  .bigtotal b { font-size: 20px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
   th, td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); }
   th:first-child, td:first-child { text-align: left; }
   th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
   h4 { margin: 8px 0 6px; font-size: 14px; color: var(--accent); }
+  .sesslist { margin-top: 4px; }
+  .sessrow { display: flex; justify-content: space-between; width: 100%; text-align: left; font-size: 14px; font-weight: 600;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; color: var(--text); }
+  .sessrow.sel { border-color: var(--accent); }
+  .sessrow span { color: var(--muted); font-weight: 500; }
   .muted { color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -114,23 +133,25 @@
 
   <div class="seq" id="seq"></div>
 
-  <div class="display">
+  <div class="display" id="display">
     <div id="status">Ready</div>
     <div id="timer" class="small">Press Start</div>
     <div id="call"></div>
     <div class="bar" id="bar"><div id="barFill"></div></div>
-    <div id="counts">Session — Made <b>0</b> · Miss <b>0</b></div>
+    <div id="counts"></div>
+    <button class="btn-link" id="newSessionBtn">Start new session</button>
   </div>
 
   <div class="row">
     <button class="btn-start" id="startBtn">Start</button>
     <button class="btn-reset" id="resetBtn" disabled>Reset</button>
+    <button class="btn-stop" id="stopBtn" disabled>Stop</button>
   </div>
   <div class="row">
     <button class="btn-make" id="makeBtn">Make</button>
     <button class="btn-miss" id="missBtn">Miss</button>
   </div>
-  <div id="micStatus">Voice commands: say “start”, “reset”, “make” / “yes”, “miss” / “no”</div>
+  <div id="micStatus">Voice: “make”/“yes”, “miss”/“no”, “pause”, “resume”, “reset”, “stop”</div>
   <div id="heard" class="hint" style="text-align:center;min-height:16px"></div>
 
   <details id="settingsPanel">
@@ -156,9 +177,12 @@
   <details id="statsPanel">
     <summary>Statistics</summary>
     <div class="panel-body">
-      <p class="muted" id="practiceTime">Practice time today: 0h 0m</p>
-      <div id="statsTables"></div>
-      <p class="muted" id="allTime"></p>
+      <div class="seg" id="statsSeg">
+        <button data-v="session">Session</button>
+        <button data-v="today">Today</button>
+        <button data-v="all">All time</button>
+      </div>
+      <div id="statsBody"></div>
     </div>
   </details>
 </div>
@@ -204,6 +228,20 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
 
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || lo)); }
+  function randInt(lo, hi) { return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
+  function todayKey() {
+    const d = new Date(); // local date, so the day rolls over at your midnight
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  const fmtClock = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  function fmtDur(secs) {
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+  }
+  const pct = (m, n) => n ? Math.round(m / n * 100) + '%' : '–';
+
+  // ---------- Settings ----------
   function defaultSettings() {
     const s = { enabled: { rod2: false, rod5: false, rod3: true }, options: {}, limit: {}, earliest: {}, buffer: 5, voiceName: '' };
     ROD_ORDER.forEach(r => {
@@ -248,7 +286,8 @@
   let settings = loadSettings();
   const saveSettings = () => store.set('foosSettingsV2', settings);
 
-  // Stats: { statsKey: { 'YYYY-MM-DD': { option: {makes, misses} } } }
+  // ---------- Stats & sessions ----------
+  // Daily totals (same storage keys as version 1): { statsKey: { 'YYYY-MM-DD': { option: {makes, misses} } } }
   const stats = {};
   ROD_ORDER.forEach(r => { stats[RODS[r].statsKey] = store.get(RODS[r].statsKey, {}); });
   let practiceTime = store.get('practiceTime', {});
@@ -257,20 +296,65 @@
     store.set('practiceTime', practiceTime);
   };
 
-  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || lo)); }
-  function randInt(lo, hi) { return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
-  function todayKey() {
-    const d = new Date(); // local date, so the day rolls over at your midnight
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Sessions: [{ id, date, num, start, end, seconds, stats: { rod: { option: {makes, misses} } } }]
+  let sessions = store.get('foosSessions', []);
+  let currentId = store.get('foosCurrentSession', null);
+  const saveSessions = () => { store.set('foosSessions', sessions); store.set('foosCurrentSession', currentId); };
+  const currentSession = () => sessions.find(s => s.id === currentId) || null;
+
+  function totals(agg) {
+    let m = 0, x = 0;
+    for (const r in agg) for (const o in agg[r]) { m += agg[r][o].makes || 0; x += agg[r][o].misses || 0; }
+    return { m, x, n: m + x };
+  }
+  const sessionHasData = s => s.seconds >= 10 || totals(s.stats).n > 0;
+
+  function newSession() {
+    flushPractice();
+    const day = todayKey();
+    const cur = currentSession();
+    if (cur) cur.end = cur.end || Date.now();
+    // Drop empty sessions so the list stays clean
+    sessions = sessions.filter(s => sessionHasData(s));
+    const num = sessions.filter(s => s.date === day).length + 1;
+    const s = { id: Date.now().toString(36), date: day, num, start: Date.now(), end: null, seconds: 0, stats: {} };
+    sessions.push(s);
+    currentId = s.id;
+    saveSessions();
+    return s;
+  }
+  function ensureSession() {
+    const c = currentSession();
+    return (!c || c.date !== todayKey()) ? newSession() : c;
+  }
+
+  function aggDay(day) {
+    const out = {};
+    ROD_ORDER.forEach(r => { out[r] = stats[RODS[r].statsKey][day] || {}; });
+    return out;
+  }
+  function aggAll() {
+    const out = {};
+    ROD_ORDER.forEach(r => {
+      out[r] = {};
+      const byDay = stats[RODS[r].statsKey];
+      for (const d in byDay) for (const o in byDay[d]) {
+        out[r][o] = out[r][o] || { makes: 0, misses: 0 };
+        out[r][o].makes += byDay[d][o].makes || 0;
+        out[r][o].misses += byDay[d][o].misses || 0;
+      }
+    });
+    return out;
   }
 
   // ---------- Elements ----------
   const $ = id => document.getElementById(id);
-  const statusEl = $('status'), timerEl = $('timer'), callEl = $('call'), barEl = $('bar'), barFill = $('barFill');
-  const countsEl = $('counts'), seqEl = $('seq');
-  const startBtn = $('startBtn'), resetBtn = $('resetBtn'), makeBtn = $('makeBtn'), missBtn = $('missBtn');
+  const displayEl = $('display'), statusEl = $('status'), timerEl = $('timer'), callEl = $('call');
+  const barEl = $('bar'), barFill = $('barFill'), countsEl = $('counts'), seqEl = $('seq');
+  const startBtn = $('startBtn'), resetBtn = $('resetBtn'), stopBtn = $('stopBtn');
+  const makeBtn = $('makeBtn'), missBtn = $('missBtn');
   const bufferSelect = $('bufferSelect'), voiceSelect = $('voiceSelect');
-  const micStatus = $('micStatus');
+  const micStatus = $('micStatus'), heardEl = $('heard');
 
   // ---------- Settings UI ----------
   function renderSettings() {
@@ -306,7 +390,7 @@
         }
         settings.enabled[r] = toggle.checked;
         card.classList.toggle('disabled', !toggle.checked);
-        saveSettings(); renderSeq();
+        saveSettings(); renderSeq(); renderStats();
       });
 
       const chips = card.querySelector('.chips');
@@ -376,11 +460,14 @@
 
   let flashTimer = null;
   function flash(msg) {
-    const prev = micStatus.dataset.base || micStatus.textContent;
-    micStatus.dataset.base = prev;
+    if (!('base' in micStatus.dataset)) micStatus.dataset.base = micStatus.textContent;
     micStatus.textContent = msg;
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => { micStatus.textContent = micStatus.dataset.base; delete micStatus.dataset.base; }, 1800);
+  }
+  function setMicText(text, on) {
+    micStatus.classList.toggle('on', !!on);
+    if ('base' in micStatus.dataset) micStatus.dataset.base = text; else micStatus.textContent = text;
   }
 
   // ---------- Speech synthesis ----------
@@ -408,8 +495,7 @@
   }
   voiceSelect.addEventListener('change', () => { settings.voiceName = voiceSelect.value; saveSettings(); });
 
-  // The mic keeps listening while the timer talks: none of the spoken calls are command words,
-  // and stopping/restarting recognition around every "set" left gaps where "make"/"miss" were lost.
+  // The mic keeps listening while the timer talks: none of the spoken calls are command words.
   function speak(text) {
     if (!('speechSynthesis' in window)) return;
     speechSynthesis.cancel();
@@ -419,32 +505,34 @@
     if (v) u.voice = v;
     try { speechSynthesis.speak(u); } catch (e) {}
   }
+  const hush = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); };
   $('testSpeechBtn').addEventListener('click', () => speak('lane two'));
 
   // ---------- Speech recognition ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognition = null, micWanted = false, micBlocked = false, micLive = false, micStarting = false;
-  const heardEl = $('heard');
 
-  // Words the recogniser commonly returns for a quick shout of "make" / "miss" near a loud table.
-  // Exact words count anywhere in the phrase; sound-alikes only count when the phrase is 1–2 words.
+  // Exact words count anywhere in the phrase; sound-alikes for make/miss only count when the phrase is 1–2 words.
   const CMD = {
-    make:  { exact: ['make', 'made', 'makes', 'making', 'yes', 'yeah', 'yep', 'good', 'goal', 'score', 'scored'],
-             alike: ['mate', 'may', 'maid', 'mike', 'bake', 'take', 'cake', 'fake', 'lake', 'wake', 'mick', 'meg', 'mayk', 'mk'] },
-    miss:  { exact: ['miss', 'missed', 'misses', 'missing', 'no', 'nope', 'nah', 'bad'],
-             alike: ['mess', 'ms', 'mrs', 'mis', 'myth', 'kiss', 'this', 'bliss', 'piss', 'mist', 'mitch', 'nest', 'mix'] },
-    reset: { exact: ['reset', 'stop', 'restart'], alike: [] },
-    start: { exact: ['start', 'go'], alike: [] },
+    stop:   { exact: ['stop', 'quit', 'end'] },
+    reset:  { exact: ['reset', 'restart', 'again'] },
+    pause:  { exact: ['pause', 'paws', 'hold', 'wait'] },
+    resume: { exact: ['resume', 'continue', 'unpause'] },
+    start:  { exact: ['start', 'go'] },
+    make:   { exact: ['make', 'made', 'makes', 'making', 'yes', 'yeah', 'yep', 'good', 'goal', 'score', 'scored'],
+              alike: ['mate', 'may', 'maid', 'mike', 'bake', 'take', 'cake', 'fake', 'lake', 'wake', 'mick', 'meg', 'mayk', 'mk'] },
+    miss:   { exact: ['miss', 'missed', 'misses', 'missing', 'no', 'nope', 'nah', 'bad'],
+              alike: ['mess', 'ms', 'mrs', 'mis', 'myth', 'kiss', 'this', 'bliss', 'piss', 'mist', 'mitch', 'nest', 'mix'] },
   };
+  const CMD_ORDER = ['stop', 'reset', 'pause', 'resume', 'start', 'make', 'miss'];
 
   function matchCommand(phrase) {
     const words = phrase.toLowerCase().replace(/[^a-z\s']/g, ' ').trim().split(/\s+/).filter(Boolean);
     if (!words.length) return null;
-    const short = words.length <= 2;
-    for (const cmd of ['reset', 'start', 'make', 'miss']) {
+    for (const cmd of CMD_ORDER) {
       if (words.some(w => CMD[cmd].exact.includes(w))) return cmd;
     }
-    if (short) {
+    if (words.length <= 2) {
       for (const cmd of ['make', 'miss']) {
         if (words.some(w => CMD[cmd].alike.includes(w))) return cmd;
       }
@@ -452,9 +540,20 @@
     return null;
   }
 
-  // Each recognised phrase is acted on once, as soon as an interim guess matches (faster than waiting for the final)
+  function handleVoice(cmd) {
+    switch (cmd) {
+      case 'stop':   if (state !== 'idle') stopDrill(); break;
+      case 'reset':  if (state !== 'idle') resetRep(); break;
+      case 'pause':  if (state === 'running') pauseDrill(); break;
+      case 'resume': if (state === 'paused') resumeDrill(); break;
+      case 'start':  if (state === 'idle') startDrill(); else if (state === 'paused') resumeDrill(); break;
+      default:       recordResult(cmd);
+    }
+  }
+
+  // Each recognised phrase is acted on once, as soon as an interim guess matches
   const handledResults = new Set();
-  let sessionId = 0;
+  let recogSession = 0;
 
   if (SR) {
     recognition = new SR();
@@ -465,8 +564,9 @@
 
     recognition.onstart = () => { micLive = true; micStarting = false; };
     recognition.onresult = (event) => {
+      if (!micWanted) return;
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const key = sessionId + ':' + i;
+        const key = recogSession + ':' + i;
         if (handledResults.has(key)) continue;
         const res = event.results[i];
         let cmd = null, heardText = res[0].transcript.trim();
@@ -474,24 +574,21 @@
           cmd = matchCommand(res[a].transcript);
           if (cmd) heardText = res[a].transcript.trim();
         }
-        if (heardEl) heardEl.textContent = `Heard: “${heardText}”${cmd ? ' → ' + cmd : ''}`;
+        heardEl.textContent = `Heard: “${heardText}”${cmd ? ' → ' + cmd : ''}`;
         if (!cmd) continue;
         handledResults.add(key);
-        if (cmd === 'start') { if (!isRunning) startDrill(); }
-        else if (cmd === 'reset') { if (isRunning) resetDrill(); }
-        else recordResult(cmd);
+        handleVoice(cmd);
       }
     };
     recognition.onend = () => {
       micLive = false; micStarting = false;
-      sessionId++; handledResults.clear();
+      recogSession++; handledResults.clear();
       if (micWanted && !micBlocked) restartMic();
     };
     recognition.onerror = (e) => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         micBlocked = true;
-        micStatus.classList.remove('on');
-        micStatus.textContent = 'Microphone blocked — allow mic access, or use the Make / Miss buttons';
+        setMicText('Microphone blocked — allow mic access, or use the Make / Miss buttons', false);
       }
     };
     // Watchdog: browsers end recognition after silence or ~60s; make sure it always comes back
@@ -509,8 +606,14 @@
     if (!recognition || micBlocked) return;
     micWanted = true;
     restartMic();
-    micStatus.classList.add('on');
-    micStatus.textContent = 'Listening: “make” / “yes”, “miss” / “no”, “reset”';
+    setMicText('Listening: “make”/“yes”, “miss”/“no”, “pause”, “reset”, “stop”', true);
+  }
+  function stopListening() {
+    if (!recognition) return;
+    micWanted = false;
+    try { recognition.abort(); } catch (e) {}
+    heardEl.textContent = '';
+    if (!micBlocked) setMicText('Microphone off — press Start to turn it back on', false);
   }
 
   // ---------- Wake lock ----------
@@ -523,18 +626,18 @@
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
 
-  // ---------- Practice time ----------
+  // ---------- Practice time (counts only while running, not paused or stopped) ----------
   let practiceStart = null, practiceInterval = null;
   function flushPractice() {
     if (!practiceStart) return;
-    const now = Date.now();
-    const secs = Math.floor((now - practiceStart) / 1000);
-    if (secs > 0) {
-      const k = todayKey();
-      practiceTime[k] = (practiceTime[k] || 0) + secs;
-      practiceStart += secs * 1000;
-      saveStats();
-    }
+    const secs = Math.floor((Date.now() - practiceStart) / 1000);
+    if (secs <= 0) return;
+    const k = todayKey();
+    practiceTime[k] = (practiceTime[k] || 0) + secs;
+    const s = currentSession();
+    if (s) { s.seconds += secs; s.end = Date.now(); }
+    practiceStart += secs * 1000;
+    saveStats(); saveSessions();
   }
   function startPractice() {
     if (!practiceStart) practiceStart = Date.now();
@@ -547,68 +650,127 @@
     renderStats();
   }
 
-  // ---------- Drill engine ----------
-  let isRunning = false;
-  let timers = [];
+  // ---------- Pausable scheduler ----------
+  let state = 'idle'; // 'idle' | 'running' | 'paused'
+  let jobs = [];      // pending timeouts: { fn, due, id, remaining }
+  let cd = null;      // countdown: { end, total, mode, remaining }
   let tickId = null;
-  let sequence = [];
-  let lastCall = null; // { rod, opt, recorded }
-  let session = { makes: 0, misses: 0 };
 
-  const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+  function schedule(job, ms) {
+    job.due = Date.now() + ms;
+    job.id = setTimeout(() => { jobs = jobs.filter(j => j !== job); job.fn(); }, ms);
+  }
+  function later(fn, ms) { const job = { fn }; schedule(job, ms); jobs.push(job); }
   function clearTimers() {
-    timers.forEach(clearTimeout); timers = [];
+    jobs.forEach(j => clearTimeout(j.id)); jobs = [];
+    clearInterval(tickId); tickId = null; cd = null;
+  }
+  function freezeTimers() {
+    const now = Date.now();
+    jobs.forEach(j => { clearTimeout(j.id); j.remaining = Math.max(0, j.due - now); });
     clearInterval(tickId); tickId = null;
+    if (cd) cd.remaining = Math.max(0, cd.end - now);
+  }
+  function thawTimers() {
+    jobs.forEach(j => schedule(j, j.remaining));
+    if (cd) { cd.end = Date.now() + cd.remaining; tick(); tickId = setInterval(tick, 100); }
   }
 
-  // Countdown display driven by wall-clock time (stays accurate)
   function runCountdown(totalSec, mode) {
     clearInterval(tickId);
-    const start = Date.now(), end = start + totalSec * 1000;
+    cd = { end: Date.now() + totalSec * 1000, total: totalSec * 1000, mode };
     barEl.className = 'bar' + (mode === 'buffer' ? ' buffer' : '');
     timerEl.classList.remove('small');
-    const tick = () => {
-      const left = Math.max(0, end - Date.now());
-      timerEl.textContent = Math.ceil(left / 1000);
-      barFill.style.width = (left / (totalSec * 1000) * 100) + '%';
-      if (mode !== 'buffer') barEl.classList.toggle('late', left < 3000);
-      if (left <= 0) { clearInterval(tickId); tickId = null; }
-    };
     tick();
     tickId = setInterval(tick, 100);
   }
+  function tick() {
+    if (!cd) return;
+    const left = Math.max(0, cd.end - Date.now());
+    timerEl.textContent = Math.ceil(left / 1000);
+    barFill.style.width = (left / cd.total * 100) + '%';
+    if (cd.mode !== 'buffer') barEl.classList.toggle('late', left < 3000);
+    if (left <= 0) { clearInterval(tickId); tickId = null; }
+  }
+
+  // ---------- Drill engine ----------
+  let sequence = [];
+  let lastCall = null; // { rod, opt, recorded }
+
+  function updateButtons() {
+    startBtn.textContent = state === 'idle' ? 'Start' : state === 'running' ? 'Pause' : 'Resume';
+    startBtn.classList.toggle('pause', state === 'running');
+    resetBtn.disabled = state === 'idle';
+    stopBtn.disabled = state === 'idle';
+    displayEl.classList.toggle('paused', state === 'paused');
+  }
 
   function startDrill() {
-    if (isRunning) return;
-    isRunning = true;
-    startBtn.disabled = true;
-    resetBtn.disabled = false;
+    if (state !== 'idle') return;
+    state = 'running';
+    ensureSession();
     $('settingsPanel').open = false;
     startListening();
     startPractice();
-    startCycle();          // speak first, inside the tap, so iOS allows audio
+    updateButtons();
+    renderCounts();
+    startCycle();          // speaks inside the tap, so iOS allows audio
     requestWakeLock();
   }
 
-  function resetDrill() {
+  function pauseDrill() {
+    if (state !== 'running') return;
+    state = 'paused';
+    freezeTimers();
+    hush();
+    stopPractice();
+    statusEl.dataset.prev = statusEl.textContent;
+    statusEl.textContent = 'Paused';
+    updateButtons();
+  }
+
+  function resumeDrill() {
+    if (state !== 'paused') return;
+    state = 'running';
+    statusEl.textContent = statusEl.dataset.prev || '';
+    startPractice();
+    requestWakeLock();
+    updateButtons();
+    thawTimers();
+  }
+
+  // Reset: abandon the current rep and start a fresh one straight away
+  function resetRep() {
+    if (state === 'idle') { startDrill(); return; }
     clearTimers();
-    isRunning = false;
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
+    hush();
+    state = 'running';
+    callEl.textContent = '';
+    startPractice();
+    updateButtons();
+    startCycle();
+  }
+
+  // Stop: end the drill and turn the microphone off
+  function stopDrill() {
+    clearTimers();
+    state = 'idle';
+    hush();
     releaseWakeLock();
     stopPractice();
+    stopListening();
     lastCall = null;
-    startBtn.disabled = false;
-    resetBtn.disabled = true;
-    statusEl.textContent = 'Ready';
+    statusEl.textContent = 'Stopped';
     timerEl.textContent = 'Press Start';
     timerEl.classList.add('small');
     callEl.textContent = '';
     barFill.style.width = '0%';
     renderSeq();
+    updateButtons();
   }
 
   function startCycle() {
-    if (!isRunning) return;
+    if (state !== 'running') return;
     clearTimers();
     sequence = ROD_ORDER.filter(r => settings.enabled[r]);
     lastCall = null;
@@ -616,7 +778,7 @@
   }
 
   function runPhase(i) {
-    if (!isRunning) return;
+    if (state !== 'running') return;
     if (i >= sequence.length) { startBuffer(); return; }
     const rod = sequence[i], cfg = RODS[rod];
     const limit = settings.limit[rod];
@@ -644,79 +806,158 @@
   }
 
   function startBuffer() {
-    if (!isRunning) return;
+    if (state !== 'running') return;
     clearTimers();
     renderSeq();
     statusEl.textContent = 'Reset the ball';
-    const secs = settings.buffer;
-    runCountdown(secs, 'buffer');
-    later(startCycle, secs * 1000);
+    runCountdown(settings.buffer, 'buffer');
+    later(startCycle, settings.buffer * 1000);
   }
 
   function recordResult(type) {
     if (!lastCall || lastCall.recorded) { flash('No call to score yet'); return; }
     const { rod, opt } = lastCall;
+    const field = type === 'make' ? 'makes' : 'misses';
+
     const key = RODS[rod].statsKey, day = todayKey();
     stats[key][day] = stats[key][day] || {};
     stats[key][day][opt] = stats[key][day][opt] || { makes: 0, misses: 0 };
-    stats[key][day][opt][type === 'make' ? 'makes' : 'misses']++;
+    stats[key][day][opt][field]++;
+
+    const s = ensureSession();
+    s.stats[rod] = s.stats[rod] || {};
+    s.stats[rod][opt] = s.stats[rod][opt] || { makes: 0, misses: 0 };
+    s.stats[rod][opt][field]++;
+    s.end = Date.now();
+
     lastCall.recorded = true;
-    session[type === 'make' ? 'makes' : 'misses']++;
-    saveStats();
-    renderCounts();
-    renderStats();
+    saveStats(); saveSessions();
+    renderCounts(); renderStats();
     flash(`${type === 'make' ? 'Make' : 'Miss'} logged: ${RODS[rod].name} – ${RODS[rod].options.find(o => o.v === opt).label}`);
 
     // A missed pass ends the rep (unless the 5-rod call was "shoot"): reset the ball and go again
-    if (type === 'miss' && isRunning && RODS[rod].kind === 'pass' && opt !== 'shoot') {
+    if (type === 'miss' && state === 'running' && RODS[rod].kind === 'pass' && opt !== 'shoot') {
       callEl.textContent = '';
       startBuffer();
     }
   }
 
-  startBtn.addEventListener('click', startDrill);
-  resetBtn.addEventListener('click', resetDrill);
+  startBtn.addEventListener('click', () => {
+    if (state === 'idle') startDrill();
+    else if (state === 'running') pauseDrill();
+    else resumeDrill();
+  });
+  resetBtn.addEventListener('click', resetRep);
+  stopBtn.addEventListener('click', stopDrill);
   makeBtn.addEventListener('click', () => recordResult('make'));
   missBtn.addEventListener('click', () => recordResult('miss'));
+  $('newSessionBtn').addEventListener('click', () => {
+    const s = newSession();
+    statsView = { type: 'session', id: s.id };
+    renderCounts(); renderStats();
+    flash(`Session ${s.num} started — today's totals keep adding up`);
+  });
 
   document.addEventListener('visibilitychange', () => {
-    if (!isRunning) return;
+    if (state !== 'running') return;
     if (document.hidden) { flushPractice(); practiceStart = null; }
     else { practiceStart = Date.now(); requestWakeLock(); if ('speechSynthesis' in window) speechSynthesis.resume(); }
   });
-  window.addEventListener('pagehide', () => { if (isRunning) flushPractice(); });
+  window.addEventListener('pagehide', () => { if (state === 'running') flushPractice(); });
 
   // ---------- Stats display ----------
+  let statsView = { type: 'session', id: null }; // id null = current session
+
   function renderCounts() {
-    countsEl.innerHTML = `Session — Made <b>${session.makes}</b> · Miss <b>${session.misses}</b>`;
+    const s = currentSession();
+    const live = s && s.date === todayKey();
+    const st = live ? totals(s.stats) : { m: 0, x: 0, n: 0 };
+    const td = totals(aggDay(todayKey()));
+    countsEl.innerHTML =
+      `${live ? 'Session ' + s.num : 'New session'} — Made <b>${st.m}</b> · Miss <b>${st.x}</b>` +
+      `<div class="today">Today — ${td.m} made · ${td.x} missed · ${pct(td.m, td.n)}</div>`;
+  }
+
+  function statTables(agg) {
+    let html = '';
+    ROD_ORDER.forEach(r => {
+      const cfg = RODS[r], data = agg[r] || {};
+      const hasData = Object.values(data).some(s => (s.makes || 0) + (s.misses || 0) > 0);
+      if (!hasData && !settings.enabled[r]) return;
+      const rows = cfg.options.map(o => {
+        const s = data[o.v] || { makes: 0, misses: 0 };
+        return `<tr><td>${o.label}</td><td>${s.makes}</td><td>${s.misses}</td><td>${pct(s.makes, s.makes + s.misses)}</td></tr>`;
+      }).join('');
+      html += `<h4>${cfg.name}</h4><table><tr><th>Call</th><th>Make</th><th>Miss</th><th>%</th></tr>${rows}</table>`;
+    });
+    return html;
+  }
+
+  function sessionList(day, selectedId) {
+    const list = sessions.filter(s => s.date === day && (sessionHasData(s) || s.id === currentId));
+    if (!list.length) return '';
+    return `<h4>Today's sessions</h4><div class="sesslist">` + list.map(s => {
+      const t = totals(s.stats);
+      const span = `${fmtClock(s.start)}${s.end ? '–' + fmtClock(s.end) : ''}`;
+      return `<button class="sessrow${s.id === selectedId ? ' sel' : ''}" data-id="${s.id}">
+        Session ${s.num}${s.id === currentId ? ' (current)' : ''}
+        <span>${span} · ${fmtDur(s.seconds)} · ${t.m}/${t.n} ${pct(t.m, t.n)}</span></button>`;
+    }).join('') + `</div>`;
   }
 
   function renderStats() {
     const day = todayKey();
-    const secs = practiceTime[day] || 0;
-    $('practiceTime').textContent = `Practice time today: ${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-
+    const body = $('statsBody');
     let html = '';
-    let allM = 0, allX = 0;
-    ROD_ORDER.forEach(r => {
-      const cfg = RODS[r], byDay = stats[cfg.statsKey];
-      for (const d in byDay) for (const o in byDay[d]) { allM += byDay[d][o].makes || 0; allX += byDay[d][o].misses || 0; }
-      const today = byDay[day] || {};
-      const rows = cfg.options.map(o => {
-        const s = today[o.v] || { makes: 0, misses: 0 };
-        const n = s.makes + s.misses;
-        return `<tr><td>${o.label}</td><td>${s.makes}</td><td>${s.misses}</td><td>${n ? Math.round(s.makes / n * 100) + '%' : '–'}</td></tr>`;
-      }).join('');
-      html += `<h4>${cfg.name} — today</h4><table><tr><th>Call</th><th>Make</th><th>Miss</th><th>%</th></tr>${rows}</table>`;
-    });
-    $('statsTables').innerHTML = html;
-    const tot = allM + allX;
-    $('allTime').textContent = `All time: ${allM} made · ${allX} missed${tot ? ` · ${Math.round(allM / tot * 100)}%` : ''}`;
+
+    if (statsView.type === 'session') {
+      const s = sessions.find(x => x.id === (statsView.id || currentId));
+      if (!s) {
+        html = `<p class="muted">No session yet — press Start.</p>`;
+      } else {
+        const t = totals(s.stats);
+        const dayLabel = s.date === day ? '' : ` · ${s.date}`;
+        html += `<div class="stathead">Session ${s.num}${s.id === currentId ? ' (current)' : ''}</div>
+          <div class="statsub">${fmtClock(s.start)}${s.end ? '–' + fmtClock(s.end) : ''}${dayLabel} · practice ${fmtDur(s.seconds)}</div>
+          <div class="bigtotal"><b>${t.m}</b> made · <b>${t.x}</b> missed · ${pct(t.m, t.n)}</div>`;
+        html += statTables(s.stats);
+        html += sessionList(day, s.id);
+      }
+    } else if (statsView.type === 'today') {
+      const agg = aggDay(day), t = totals(agg);
+      const n = sessions.filter(s => s.date === day && sessionHasData(s)).length;
+      html += `<div class="stathead">Today</div>
+        <div class="statsub">${n} session${n === 1 ? '' : 's'} · practice ${fmtDur(practiceTime[day] || 0)}</div>
+        <div class="bigtotal"><b>${t.m}</b> made · <b>${t.x}</b> missed · ${pct(t.m, t.n)}</div>`;
+      html += statTables(agg);
+      html += sessionList(day, null);
+    } else {
+      const agg = aggAll(), t = totals(agg);
+      const allSecs = Object.values(practiceTime).reduce((a, b) => a + b, 0);
+      const days = Object.keys(practiceTime).filter(d => practiceTime[d] > 0).length;
+      html += `<div class="stathead">All time</div>
+        <div class="statsub">${days} day${days === 1 ? '' : 's'} practised · ${fmtDur(allSecs)}</div>
+        <div class="bigtotal"><b>${t.m}</b> made · <b>${t.x}</b> missed · ${pct(t.m, t.n)}</div>`;
+      html += statTables(agg);
+    }
+
+    body.innerHTML = html;
+    body.querySelectorAll('.sessrow').forEach(b => b.addEventListener('click', () => {
+      statsView = { type: 'session', id: b.dataset.id === currentId ? null : b.dataset.id };
+      renderStats();
+    }));
+    $('statsSeg').querySelectorAll('button').forEach(b => b.classList.toggle('sel', b.dataset.v === statsView.type));
   }
+
+  $('statsSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    statsView = { type: b.dataset.v, id: null };
+    renderStats();
+  }));
 
   // ---------- Init ----------
   renderSettings();
   renderSeq();
+  updateButtons();
   renderCounts();
   renderStats();
 })();
