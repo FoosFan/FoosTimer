@@ -815,7 +815,12 @@
   }
 
   function recordResult(type) {
-    if (!lastCall || lastCall.recorded) { flash('No call to score yet'); return; }
+    if (!lastCall || lastCall.recorded) {
+      // Nothing left to score, but "miss" still means: start the rep over
+      if (type === 'miss' && state !== 'idle') { flash('Miss — restarting rep'); resetRep(); }
+      else flash('No call to score yet');
+      return;
+    }
     const { rod, opt } = lastCall;
     const field = type === 'make' ? 'makes' : 'misses';
 
@@ -835,11 +840,8 @@
     renderCounts(); renderStats();
     flash(`${type === 'make' ? 'Make' : 'Miss'} logged: ${RODS[rod].name} – ${RODS[rod].options.find(o => o.v === opt).label}`);
 
-    // A missed pass ends the rep (unless the 5-rod call was "shoot"): reset the ball and go again
-    if (type === 'miss' && state === 'running' && RODS[rod].kind === 'pass' && opt !== 'shoot') {
-      callEl.textContent = '';
-      startBuffer();
-    }
+    // Any miss (pass or shot) resets the rep and starts the next one straight away, same as Reset
+    if (type === 'miss' && state !== 'idle') resetRep();
   }
 
   startBtn.addEventListener('click', () => {
