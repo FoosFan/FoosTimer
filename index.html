@@ -106,6 +106,14 @@
   select { font: inherit; font-size: 15px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
     border-radius: 10px; padding: 8px; max-width: 65%; }
 
+  .check { display: flex; gap: 10px; align-items: center; font-size: 15px; margin: 12px 0 4px; }
+  .check input { width: 20px; height: 20px; accent-color: var(--accent); flex: none; }
+  input[type=text], input[type=number] { font: inherit; font-size: 15px; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  #chTarget { width: 80px; text-align: center; }
+  #chPhrase { width: 100%; margin-top: 6px; }
+  #counts .chal { color: var(--call); font-size: 15px; }
+
   /* Stats */
   .seg { display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 3px; margin-bottom: 12px; }
   .seg button { font-size: 14px; padding: 9px 6px; border-radius: 9px; background: transparent; color: var(--muted); }
@@ -158,7 +166,25 @@
     <summary>Drill Settings</summary>
     <div class="panel-body" id="rodSettings"></div>
     <div class="panel-body">
-      <div class="field">
+      <div class="rodcard" id="challengeCard">
+        <div class="rodhead">
+          <div><div class="t">Challenge Mode</div><div class="s">Hit reps in a row using the drill above</div></div>
+          <label class="switch"><input type="checkbox" id="chOn"><span></span></label>
+        </div>
+        <div class="rodbody">
+          <div class="field" style="margin:10px 0 4px">
+            <label for="chTarget">In a row</label>
+            <input type="number" id="chTarget" min="1" max="100" inputmode="numeric">
+          </div>
+          <label class="check"><input type="checkbox" id="chPhraseOn"> Say a phrase before the final rep</label>
+          <input type="text" id="chPhrase" maxlength="60" placeholder="No pressure!">
+          <p class="hint">Example: turn on only the 3-rod with only Lane 5 selected for “10 shots at 5 in a row”, or leave 2 → 5 → 3 on to need the whole sequence. A rep counts when its last call is a make; any miss resets the streak.</p>
+        </div>
+      </div>
+      <label class="check"><input type="checkbox" id="waitMake"> Wait for “make” before the next rod's timer starts</label>
+      <p class="hint" style="margin-top:0">After a pass call, the next rod's clock starts only once you say “make” (ball caught).</p>
+      <label class="check"><input type="checkbox" id="buzzerOn"> Buzzer when possession time runs out</label>
+      <div class="field" style="margin-top:12px">
         <label for="bufferSelect">Buffer between reps</label>
         <select id="bufferSelect"></select>
       </div>
@@ -237,13 +263,16 @@
   const fmtClock = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   function fmtDur(secs) {
     const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
+    if (!h && !m) return `${Math.floor(secs)}s`;
     return h ? `${h}h ${m}m` : `${m}m`;
   }
   const pct = (m, n) => n ? Math.round(m / n * 100) + '%' : '–';
 
   // ---------- Settings ----------
   function defaultSettings() {
-    const s = { enabled: { rod2: false, rod5: false, rod3: true }, options: {}, limit: {}, earliest: {}, buffer: 5, voiceName: '' };
+    const s = { enabled: { rod2: false, rod5: false, rod3: true }, options: {}, limit: {}, earliest: {}, buffer: 5, voiceName: '',
+      waitForMake: false, buzzer: true,
+      challenge: { on: false, target: 10, phraseOn: true, phrase: 'No pressure!' } };
     ROD_ORDER.forEach(r => {
       s.options[r] = RODS[r].options.map(o => o.v);
       s.limit[r] = RODS[r].defLimit;
@@ -267,6 +296,15 @@
       });
       if (saved.buffer) s.buffer = saved.buffer;
       if (saved.voiceName) s.voiceName = saved.voiceName;
+      if ('waitForMake' in saved) s.waitForMake = !!saved.waitForMake;
+      if ('buzzer' in saved) s.buzzer = !!saved.buzzer;
+      if (saved.challenge) {
+        const c = saved.challenge;
+        s.challenge.on = !!c.on;
+        if (c.target) s.challenge.target = clamp(c.target, 1, 100);
+        if ('phraseOn' in c) s.challenge.phraseOn = !!c.phraseOn;
+        if (typeof c.phrase === 'string') s.challenge.phrase = c.phrase;
+      }
     } else {
       // Migrate settings from version 1
       const oldPassMode = store.get('passMode', null);
@@ -457,6 +495,67 @@
     ROD_ORDER.forEach(r => { settings.limit[r] = RODS[r].defLimit; settings.earliest[r] = RODS[r].defEarliest; });
     saveSettings(); renderSettings();
   });
+
+  // Challenge / wait / buzzer settings
+  const chOn = $('chOn'), chTarget = $('chTarget'), chPhraseOn = $('chPhraseOn'), chPhrase = $('chPhrase');
+  const waitMake = $('waitMake'), buzzerOn = $('buzzerOn');
+  function renderExtraSettings() {
+    chOn.checked = settings.challenge.on;
+    $('challengeCard').classList.toggle('disabled', !settings.challenge.on);
+    chTarget.value = settings.challenge.target;
+    chPhraseOn.checked = settings.challenge.phraseOn;
+    chPhrase.value = settings.challenge.phrase;
+    chPhrase.disabled = !settings.challenge.phraseOn;
+    waitMake.checked = settings.waitForMake;
+    buzzerOn.checked = settings.buzzer;
+  }
+  chOn.addEventListener('change', () => {
+    settings.challenge.on = chOn.checked;
+    $('challengeCard').classList.toggle('disabled', !chOn.checked);
+    saveSettings(); renderCounts();
+  });
+  chTarget.addEventListener('change', () => {
+    settings.challenge.target = clamp(parseInt(chTarget.value, 10), 1, 100);
+    chTarget.value = settings.challenge.target;
+    saveSettings(); renderCounts();
+  });
+  chPhraseOn.addEventListener('change', () => {
+    settings.challenge.phraseOn = chPhraseOn.checked;
+    chPhrase.disabled = !chPhraseOn.checked;
+    saveSettings();
+  });
+  chPhrase.addEventListener('input', () => { settings.challenge.phrase = chPhrase.value; saveSettings(); });
+  waitMake.addEventListener('change', () => { settings.waitForMake = waitMake.checked; saveSettings(); });
+  buzzerOn.addEventListener('change', () => {
+    settings.buzzer = buzzerOn.checked; saveSettings();
+    if (buzzerOn.checked) buzz(); // preview
+  });
+
+  // ---------- Buzzer ----------
+  let audioCtx = null;
+  function unlockAudio() {
+    try {
+      if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioCtx = new AC(); }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) {}
+  }
+  function buzz() {
+    try { if (navigator.vibrate) navigator.vibrate([300, 100, 300]); } catch (e) {}
+    unlockAudio();
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const g = audioCtx.createGain();
+    g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+    g.gain.setValueAtTime(0.5, t + 0.75);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+    [180, 186].forEach(f => {
+      const o = audioCtx.createOscillator();
+      o.type = 'square'; o.frequency.value = f;
+      o.connect(g); o.start(t); o.stop(t + 0.82);
+    });
+  }
 
   let flashTimer = null;
   function flash(msg) {
@@ -676,9 +775,9 @@
     if (cd) { cd.end = Date.now() + cd.remaining; tick(); tickId = setInterval(tick, 100); }
   }
 
-  function runCountdown(totalSec, mode) {
+  function runCountdown(totalSec, mode, onExpire) {
     clearInterval(tickId);
-    cd = { end: Date.now() + totalSec * 1000, total: totalSec * 1000, mode };
+    cd = { end: Date.now() + totalSec * 1000, total: totalSec * 1000, mode, onExpire, fired: false };
     barEl.className = 'bar' + (mode === 'buffer' ? ' buffer' : '');
     timerEl.classList.remove('small');
     tick();
@@ -690,12 +789,21 @@
     timerEl.textContent = Math.ceil(left / 1000);
     barFill.style.width = (left / cd.total * 100) + '%';
     if (cd.mode !== 'buffer') barEl.classList.toggle('late', left < 3000);
-    if (left <= 0) { clearInterval(tickId); tickId = null; }
+    if (left <= 0) {
+      clearInterval(tickId); tickId = null;
+      if (cd.onExpire && !cd.fired) { cd.fired = true; cd.onExpire(); }
+    }
   }
 
   // ---------- Drill engine ----------
   let sequence = [];
-  let lastCall = null; // { rod, opt, recorded }
+  let lastCall = null;        // { rod, opt, idx, final, recorded }
+  let phaseIdx = -1;          // rod phase currently on the clock (-1 = buffer / none)
+  let waitingForMake = false; // a call is out and the next step waits for "make"
+  let inBuffer = false;
+  let pendingAction = null;   // something a "make" triggered while paused
+  let challenge = null;       // { target, streak, best, reps, start, desc }
+  let challenges = store.get('foosChallenges', []);
 
   function updateButtons() {
     startBtn.textContent = state === 'idle' ? 'Start' : state === 'running' ? 'Pause' : 'Resume';
@@ -705,10 +813,22 @@
     displayEl.classList.toggle('paused', state === 'paused');
   }
 
+  function describeDrill() {
+    return ROD_ORDER.filter(r => settings.enabled[r]).map(r => {
+      const cfg = RODS[r], sel = settings.options[r];
+      const what = sel.length === cfg.options.length ? 'any' : sel.map(v => cfg.options.find(o => o.v === v).label).join('/');
+      return `${cfg.short}-rod ${what}`;
+    }).join(' → ');
+  }
+
   function startDrill() {
     if (state !== 'idle') return;
     state = 'running';
+    unlockAudio();
     ensureSession();
+    challenge = settings.challenge.on
+      ? { target: settings.challenge.target, streak: 0, best: 0, reps: 0, start: Date.now(), desc: describeDrill() }
+      : null;
     $('settingsPanel').open = false;
     startListening();
     startPractice();
@@ -736,19 +856,28 @@
     startPractice();
     requestWakeLock();
     updateButtons();
-    thawTimers();
+    if (pendingAction) { const fn = pendingAction; pendingAction = null; fn(); }
+    else thawTimers();
   }
 
-  // Reset: abandon the current rep and start a fresh one straight away
+  // Run now, or after Resume if paused
+  function whenRunning(fn) {
+    if (state === 'running') fn();
+    else if (state === 'paused') pendingAction = fn;
+  }
+
+  // Reset (button, "reset" or "miss"): abandon the rep, run the buffer, then start a fresh rep
   function resetRep() {
     if (state === 'idle') { startDrill(); return; }
     clearTimers();
     hush();
+    pendingAction = null;
     state = 'running';
+    lastCall = null;
     callEl.textContent = '';
     startPractice();
     updateButtons();
-    startCycle();
+    startBuffer();
   }
 
   // Stop: end the drill and turn the microphone off
@@ -759,7 +888,8 @@
     releaseWakeLock();
     stopPractice();
     stopListening();
-    lastCall = null;
+    lastCall = null; challenge = null; pendingAction = null;
+    phaseIdx = -1; waitingForMake = false; inBuffer = false;
     statusEl.textContent = 'Stopped';
     timerEl.textContent = 'Press Start';
     timerEl.classList.add('small');
@@ -767,13 +897,17 @@
     barFill.style.width = '0%';
     renderSeq();
     updateButtons();
+    renderCounts();
   }
 
   function startCycle() {
     if (state !== 'running') return;
     clearTimers();
+    inBuffer = false;
     sequence = ROD_ORDER.filter(r => settings.enabled[r]);
     lastCall = null;
+    if (challenge) challenge.reps++;
+    renderCounts();
     runPhase(0);
   }
 
@@ -785,43 +919,95 @@
     const earliest = clamp(settings.earliest[rod], 1, limit - 1);
     const callSec = randInt(earliest, Math.max(earliest, limit - 1));
 
+    phaseIdx = i;
+    waitingForMake = false;
+    inBuffer = false;
     renderSeq(rod);
     statusEl.textContent = `${cfg.name} · Set`;
     callEl.textContent = '';
     speak('set');
-    runCountdown(limit, 'possession');
+    runCountdown(limit, 'possession', () => onTimeUp(i));
 
     later(() => {
       const opts = settings.options[rod];
       const optV = opts[Math.floor(Math.random() * opts.length)];
       const opt = cfg.options.find(o => o.v === optV);
-      lastCall = { rod, opt: optV, recorded: false };
+      const final = i === sequence.length - 1 || (rod === 'rod5' && optV === 'shoot');
+      lastCall = { rod, opt: optV, idx: i, final, recorded: false };
       statusEl.textContent = cfg.name;
       callEl.textContent = cfg.kind === 'shot' ? `Shoot ${opt.v}` : opt.label;
       speak(opt.say);
 
-      const skipToBuffer = rod === 'rod5' && optV === 'shoot';
-      later(() => { skipToBuffer ? startBuffer() : runPhase(i + 1); }, 1000);
+      if (!final && !settings.waitForMake) {
+        later(() => runPhase(i + 1), 1000);   // next rod starts on its own
+      } else {
+        waitingForMake = true;                 // wait for "make" / "miss" (or the clock)
+      }
     }, callSec * 1000);
+  }
+
+  // Possession clock hit zero
+  function onTimeUp(i) {
+    if (state !== 'running' || phaseIdx !== i) return;
+    if (settings.buzzer) buzz();
+    statusEl.textContent = 'Time!';
+    // After the last call of a rep, move on to the buffer so the drill never stalls.
+    // (A pass still waiting for "make" keeps waiting — say "make" or "miss".)
+    if (lastCall && lastCall.idx === i && lastCall.final) {
+      later(() => { if (phaseIdx === i && !inBuffer) startBuffer(); }, 1500);
+    }
   }
 
   function startBuffer() {
     if (state !== 'running') return;
     clearTimers();
+    inBuffer = true;
+    phaseIdx = -1;
+    waitingForMake = false;
     renderSeq();
     statusEl.textContent = 'Reset the ball';
     runCountdown(settings.buffer, 'buffer');
-    later(startCycle, settings.buffer * 1000);
+
+    // Final rep of a challenge coming up
+    if (challenge && challenge.target > 1 && challenge.streak === challenge.target - 1 && settings.challenge.phraseOn) {
+      speak((settings.challenge.phrase || '').trim() || 'No pressure!');
+      statusEl.textContent = 'Final rep';
+    }
+    later(() => whenQuiet(startCycle), settings.buffer * 1000);
+  }
+
+  // Don't let "set" cut off a phrase that is still being spoken (waits up to 5s)
+  function whenQuiet(fn, waited = 0) {
+    if (state !== 'running') return;
+    const busy = 'speechSynthesis' in window && speechSynthesis.speaking;
+    if (busy && waited < 5000) later(() => whenQuiet(fn, waited + 200), 200);
+    else fn();
+  }
+
+  function completeChallenge() {
+    const c = challenge;
+    const secs = Math.round((Date.now() - c.start) / 1000);
+    challenges.push({ ts: Date.now(), date: todayKey(), desc: c.desc, target: c.target, reps: c.reps, secs });
+    store.set('foosChallenges', challenges);
+    stopDrill();
+    statusEl.textContent = 'Challenge complete!';
+    timerEl.textContent = `${c.target} in a row`;
+    callEl.textContent = `${c.reps} reps · ${fmtDur(secs)}`;
+    speak('Challenge complete!');
+    renderStats();
   }
 
   function recordResult(type) {
     if (!lastCall || lastCall.recorded) {
-      // Nothing left to score, but "miss" still means: start the rep over
-      if (type === 'miss' && state !== 'idle') { flash('Miss — restarting rep'); resetRep(); }
-      else flash('No call to score yet');
+      if (type === 'miss' && state !== 'idle') {
+        if (challenge) challenge.streak = 0;
+        flash('Miss — resetting');
+        resetRep();
+      } else flash('No call to score yet');
       return;
     }
-    const { rod, opt } = lastCall;
+    const call = lastCall;
+    const { rod, opt } = call;
     const field = type === 'make' ? 'makes' : 'misses';
 
     const key = RODS[rod].statsKey, day = todayKey();
@@ -835,13 +1021,34 @@
     s.stats[rod][opt][field]++;
     s.end = Date.now();
 
-    lastCall.recorded = true;
+    call.recorded = true;
     saveStats(); saveSessions();
-    renderCounts(); renderStats();
     flash(`${type === 'make' ? 'Make' : 'Miss'} logged: ${RODS[rod].name} – ${RODS[rod].options.find(o => o.v === opt).label}`);
 
-    // Any miss (pass or shot) resets the rep and starts the next one straight away, same as Reset
-    if (type === 'miss' && state !== 'idle') resetRep();
+    if (type === 'miss') {
+      if (challenge) challenge.streak = 0;
+      renderCounts(); renderStats();
+      if (state !== 'idle') resetRep();          // buffer, then a fresh rep
+      return;
+    }
+
+    // Make
+    if (call.final) {
+      if (challenge) {
+        challenge.streak++;
+        challenge.best = Math.max(challenge.best, challenge.streak);
+        if (challenge.streak >= challenge.target) { renderCounts(); completeChallenge(); return; }
+      }
+      renderCounts(); renderStats();
+      if (!inBuffer) whenRunning(() => { if (!inBuffer) startBuffer(); });
+    } else {
+      renderCounts(); renderStats();
+      // Pass caught: start the next rod's clock now (only when the timer is waiting for this make)
+      if (waitingForMake && phaseIdx === call.idx) {
+        waitingForMake = false;
+        whenRunning(() => runPhase(call.idx + 1));
+      }
+    }
   }
 
   startBtn.addEventListener('click', () => {
@@ -877,7 +1084,18 @@
     const td = totals(aggDay(todayKey()));
     countsEl.innerHTML =
       `${live ? 'Session ' + s.num : 'New session'} — Made <b>${st.m}</b> · Miss <b>${st.x}</b>` +
-      `<div class="today">Today — ${td.m} made · ${td.x} missed · ${pct(td.m, td.n)}</div>`;
+      `<div class="today">Today — ${td.m} made · ${td.x} missed · ${pct(td.m, td.n)}</div>` +
+      (challenge
+        ? `<div class="chal">Challenge — <b>${challenge.streak}</b> / ${challenge.target} in a row · best ${challenge.best} · rep ${challenge.reps}</div>`
+        : (settings.challenge.on && state === 'idle'
+          ? `<div class="chal">Challenge mode: ${settings.challenge.target} in a row — press Start</div>` : ''));
+  }
+
+  function challengeList(list, title, withDate) {
+    if (!list.length) return '';
+    return `<h4>${title}</h4>` + list.map(c => `<div class="sessrow" style="cursor:default">
+      <div>${c.target} in a row<br><span>${c.desc}</span></div>
+      <span style="text-align:right">${withDate ? c.date : fmtClock(c.ts)}<br>${c.reps} reps · ${fmtDur(c.secs)}</span></div>`).join('');
   }
 
   function statTables(agg) {
@@ -933,6 +1151,7 @@
         <div class="bigtotal"><b>${t.m}</b> made · <b>${t.x}</b> missed · ${pct(t.m, t.n)}</div>`;
       html += statTables(agg);
       html += sessionList(day, null);
+      html += challengeList(challenges.filter(c => c.date === day).reverse(), 'Challenges completed today', false);
     } else {
       const agg = aggAll(), t = totals(agg);
       const allSecs = Object.values(practiceTime).reduce((a, b) => a + b, 0);
@@ -941,6 +1160,7 @@
         <div class="statsub">${days} day${days === 1 ? '' : 's'} practised · ${fmtDur(allSecs)}</div>
         <div class="bigtotal"><b>${t.m}</b> made · <b>${t.x}</b> missed · ${pct(t.m, t.n)}</div>`;
       html += statTables(agg);
+      html += challengeList(challenges.slice(-10).reverse(), 'Recent challenges', true);
     }
 
     body.innerHTML = html;
@@ -958,6 +1178,7 @@
 
   // ---------- Init ----------
   renderSettings();
+  renderExtraSettings();
   renderSeq();
   updateButtons();
   renderCounts();
